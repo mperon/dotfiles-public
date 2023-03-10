@@ -369,7 +369,11 @@ _prompt_vcs() {
 _prompt_venv() {
     psvar[2]=$(__venv_name '%s')
 }
+_fix_cursor() {
+    echo -ne "\e[5 q"
+}
 add-zsh-hook precmd _prompt_venv
+add-zsh-hook precmd _fix_cursor
 #}}}
 
 ## define prompt variables {{{
