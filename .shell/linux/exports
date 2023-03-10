@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# vim: ts=4 sw=4 et ft=sh
+# To the extent possible under law, the author(s) have dedicated all
+# copyright and related and neighboring rights to this software to the
+# public domain worldwide. This software is distributed without any warranty.
+# You should have received a copy of the CC0 Public Domain Dedication along
+# with this software.
+# If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
+
+# base-files version 4.3-2
+
+# CONFIGURATION
+# java enviroment variables
+if [[ -f /usr/bin/javac ]]; then
+    export JAVA_HOME=$(dirname $(dirname $(readlink -f /usr/bin/javac)))
+    export CLASSPATH="$JAVA_HOME:."
+    export JAVA_CLASSPATH="$CLASSPATH"
+fi
+
+# wine default variables
+[[ -f /usr/bin/wine ]] && export WINEARCH=win32
+[[ -f /usr/bin/wine ]] && export WINEPREFIX=~/.wine32
+
+# tomcat enviroment variable
+[[ -d /opt/development/tomcat ]] && export CATALINA_HOME=/opt/development/tomcat
+
+# maven enviroment variables
+if [[ -d /opt/development/maven ]]; then
+    export M2_HOME=/opt/development/maven
+    export MAVEN_HOME=/opt/development/maven
+    [[ ! ":${PATH}:" =~ ":$M2_HOME/bin:" ]] && export PATH="${PATH}:$M2_HOME/bin"
+fi
+
+# android studio enviroment variables
+if [[ -d /opt/development/android-studio/sdk ]];then
+    export ANDROID_HOME=/opt/development/android-studio/sdk/
+    export PATH=$PATH:$ANDROID_HOME/tools:$ANDROID_HOME/tools/bin:$ANDROID_HOME/platform-tools
+    export SDKMANAGER_OPTS="-XX:+IgnoreUnrecognizedVMOptions --add-modules java.se.ee"
+else
+    #sdk tools only
+    if [[ -d /opt/development/android-sdk ]];then
+        export ANDROID_HOME=/opt/development/android-sdk
+        export PATH=$PATH:$ANDROID_HOME/tools:$ANDROID_HOME/tools/bin:$ANDROID_HOME/platform-tools
+        export SDKMANAGER_OPTS="-XX:+IgnoreUnrecognizedVMOptions"
+    fi
+fi #end: android studio
+
+# PIP local packages
+if [[ -d "$HOME/.local/bin" ]]; then
+    [[ ! ":${PATH}:" =~ ":${HOME}/.local/bin:" ]] && export PATH="$PATH:$HOME/.local/bin"
+fi
+
+
+# if it is an WSL Distro
+if [[ -n "$WSL_DISTRO_NAME" ]]; then
+#default directory enviroment
+    export D="/win/Downloads"
+    export V="/win/Videos"
+    export W="/win/Documents"
+    export F="/win/Pictures"
+    export M="/win/Music"
+    export P="$HOME/Projetos"
+fi

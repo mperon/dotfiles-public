@@ -1,0 +1,28 @@
+#!/usr/bin/env zsh
+#vim: ts=4 sw=4 et ft=sh
+
+#for c in {0..255}
+#do
+#    printf "\e[48;5;%dm %3d \e[0m" $c $c
+#    [ $(($c % 16)) -eq 15 ] && echo
+#done
+export PATH="/usr/local/opt/findutils/libexec/gnubin:$PATH"
+
+_dformat() {
+    local s=(d h m s ms) d=(86400000 3600000 60000 1000 1) r= t=$1 i=0 v=
+    for i in {1..5}; do
+        v=$(( $t / ${d[i]} ))
+        [[ $v -gt 0 ]] && t=$(( $t - ($v * ${d[i]}) )) && r+="$v${s[i]} "
+        [[ -n $r && $2 == "round" ]] && print -P "$r" && return 0
+    done
+    print -P "$r"
+}
+
+#_dformat "$@"
+
+PATH=$PATH whereis find
+PATH=$PATH whereis gfind
+
+find -version
+gfind -version
+

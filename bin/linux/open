@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=bash
+
+wsl_fixed_path() {
+	local arglist=()
+	for arg in "$@"; do
+		if [[ -e "$arg" ]]; then
+			arg=$(wslpath -w "$arg")
+		fi
+		arglist+=("$arg")
+	done
+	wslview "${arglist[@]}"
+}
+
+# import functions
+if [[ -n "$WSL_DISTRO_NAME" ]]; then 
+	# se for um arquivo, tem que traduzir primeiro
+	wsl_fixed_path "$@"
+else
+	xdg-open "$@"
+fi

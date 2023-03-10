@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# vim: ts=4 sw=4 et ft=sh
+
+#TODO: NEED TO IMPLEMENT OPTIONS
+
+dmg() {
+    hdiutil create -fs HFS+ -srcfolder "$1" -volname "$2" "$2.dmg"
+}
+
+create() {
+    hdiutil create -volname WhatYouWantTheDiskToBeNamed \
+        -srcfolder /path/to/the/folder/you/want/to/create \
+        -ov -format UDZO name.dmg
+}
+
+mkiso() {
+    hdiutil makehybrid -o ~/Desktop/image.iso \
+        ~/path/to/folder/to/be/converted -iso -joliet
+}

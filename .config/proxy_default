@@ -1,0 +1,69 @@
+#!/bin/bash
+# vim: ts=4 sw=4 et ft=sh
+
+# name of proxy settings
+#PK_NAME=CIASC
+
+# proxy will be disabled if true
+#PK_DISABLED=True
+
+# filter proxy settings, limited only in networks:
+#PK_NETWORKS=172.21.0.0/16
+
+# if proxy need username set here
+#PK_USERNAME=""
+#PK_PASSWORD=""
+
+# Use proxy_all for defining for all proxy settings
+# except no_proxy
+#proxy_all="http://${PK_USERNAME}:${PK_PASSWORD}@10.4.0.2:8080"
+
+# force internal ip and network to be
+#PK_INTIP=192.160.1
+#PK_ETH=eth0
+
+# modes of changing proxy settings (can be, auto or manual)
+#PK_MODE=
+# if mode is auto, sets the autoproxy url to:
+#PK_AUTOPROXY=
+
+# keeper variables, function or name
+# by default, this variable is set to be the PK_NAME
+# as __fnMPSCKeeper. first parameter is if it on or 
+# off
+#PK_KEEPER_FN=
+
+# you can create a function body here, and change name of
+# variable
+# function __fnCIASCKeeperCustom() {
+# 		# do something for every call of proxyconfig
+# }
+
+# individual variables (when the case)
+#PK_all_proxy=$proxy_all
+#PK_http_proxy=$proxy_all
+#PK_HTTPS_PROXY=$proxy_all
+#PK_https_proxy=$proxy_all
+#PK_FTP_PROXY=$proxy_all
+#PK_ftp_proxy=$proxy_all
+#PK_RSYNC_PROXY=$proxy_all
+#PK_rsync_proxy=$proxy_all
+#PK_no_proxy=
+#CIASC DEFAULT (a)
+#PK_no_proxy="localhost,localaddress,.localdomain.com,127.0.0.1,127.0.1.1,127.,10.,172.21.,192.168.,.sc.gov.br,.ciasc.gov.br"
+#CIASC DEFAULT (b)
+#PK_no_proxy="localhost,localaddress,.localdomain.com,127.0.0.0/8,10.0.0.0/8,172.21.0.0/12,192.168.0.0/16,.sc.gov.br,.ciasc.gov.br"
+#MPSC DEFAULT
+#PK_no_proxy="localhost,127.0.0.1,*.gov.br,*.mpsc.br,*.mp.br,10.4.0.*,10.0.0.0/8"
+
+#other settings (actions)
+#Define the directory where actions will be
+#put files with extension .sh to run
+#default is $HOME/.config/proxykeeper/
+#PK_ACTIONSPATH=
+
+#hosts to action ssh add proxy tunnel
+#PK_SSH_HOSTS=
+
+#noproxy config to maven action
+#PK_MAVEN_NOPROXY=

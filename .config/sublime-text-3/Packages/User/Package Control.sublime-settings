@@ -1,0 +1,22 @@
+{
+	"bootstrapped": true,
+	"in_process_packages":
+	[
+	],
+	"installed_packages":
+	[
+		"AdonisJs",
+		"BracketHighlighter",
+		"Conky.tmLanguage",
+		"Dracula Color Scheme",
+		"Generic Config",
+		"INI",
+		"jQuery",
+		"Monokai JSON+",
+		"Package Control",
+		"SideBarEnhancements",
+		"Theme - Monokai+",
+		"TrailingSpaces",
+		"VimModelines"
+	]
+}

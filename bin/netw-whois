@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+
+bcat() {
+    local _cmd=cat _bcat="-l yaml --theme=base16 --number"
+    if hash batcat &>/dev/null; then
+        _cmd="batcat $_bcat"
+    elif hash bat &>/dev/null; then
+        _cmd="bat $_bcat"
+    fi
+    $_cmd
+}
+
+
+/usr/bin/whois "$@" | sed -e '/^For more information on/,/Registrars.$/d' \
+    -e '/^Search results obtained/,/conditions and policies.$/d' \
+    | bcat

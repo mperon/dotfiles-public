@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+
+#brew stuff
+export HOMEBREW_NO_AUTO_UPDATE=1
+
+# allow colored cli
+export CLICOLOR=1
+export LSCOLORS="gxBxhxDxfxhxhxhxhxcxcx"
+
+export A="$HOME/Applications"
+export L="$HOME/Library"
+export V="$HOME/Movies"
+export C="$HOME/Library/Mobile Documents/com~apple~CloudDocs"
+
+# Ruby folder
+export GEM_HOME=${XDG_DATA_HOME}/gem
+
+# do not use /etc/hosts in completion
+export COMP_KNOWN_HOSTS_WITH_HOSTFILE=""
+
+# add brew dir to path
+#[[ -d /usr/local/sbin ]] && [[ ! ":${PATH}:" =~ ":/usr/local/sbin:" ]] \
+#    && export PATH="/usr/local/sbin:$PATH"
+
+# android studio settings
+if [[ -d "$HOME/Library/Android/sdk" ]]; then
+    export ANDROID_HOME=$HOME/Library/Android/sdk
+    export INTEL_HAXM_HOME=/usr/local/Caskroom/intel-haxm
+    for d in "$ANDROID_HOME/emulator" "$ANDROID_HOME/tools" "$ANDROID_HOME/tools/bin" "$ANDROID_HOME/platform-tools"; do
+        [[ -d "$d" ]] && [[ ! ":${PATH}:" =~ ":$d:" ]] \
+            && export PATH="$PATH:$d"
+    done
+    unset d
+fi
+
+# flutter
+[[ -d "$HOME/Library/Android/flutter" ]] && [[ ! ":${PATH}:" =~ ":$HOME/Library/Android/flutter:" ]] \
+    && export PATH="$PATH:$HOME/Library/Android/flutter"

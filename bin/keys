@@ -1,0 +1,291 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=bash
+source "${BASH_SOURCE%/*}/lib/pgetopt.sh"
+
+#functions
+function_exists() {
+    declare -f -F $1 > /dev/null 2>&1
+    return $?
+}
+
+# generate key if doesnt exists
+# keys-generator (rsa|ed)
+keys-generate() {
+    local kt="${1:-rsa}" dest="${2:-}" comment="${3}"
+    [[ "$1" == "-h" ]] && usage "generate [rsa|ed|ed25519] [dest] [comment]"
+    [[ "$kt" == "ed" ]] && kt=ed25519
+    [[ -z $comment ]] && comment=${USER}@$(hostname)
+    [[ -z "$dest" ]] && dest=$HOME/.ssh/id_$kt
+    if [[ ! -f $dest ]]; then
+        case "$kt" in
+            rsa)
+                ssh-keygen -t rsa -b 4096 -o -f $dest \
+                    -C "$comment"
+                echo "Generated new key at: $dest "
+                ;;
+            ed*)
+                ssh-keygen -t ed25519 -a 100 -o -f $dest \
+                    -C "$comment"
+                echo "Generated new key at: $dest "
+                ;;
+            *)
+                echo "Unssuported key format: $kt "
+                return 4
+                ;;               
+        esac
+    fi
+}
+
+# copy keys to vault
+# keys-save [-f]
+keys-save() {
+    local HOST=$(hostname) KEY= KEY_FILE= FORCE=${1}
+    [[ "$1" == "-h" ]] && usage "save [-f]"
+    [[ ! -d $HOME/.ssh ]] && echo "No public keys to export!" && return 4
+        for k in $HOME/.ssh/*.pub; do
+        KEY="${k##*/}" KEY="${KEY%.*}"
+        KEY_FILE="$HOME/.config/keys/${HOST}__${KEY}.pub"
+        [[ -n "$FORCE" ]] && [[ -f "$KEY_FILE" ]] && rm -f "$KEY_FILE"
+        if [[ ! -f "$KEY_FILE" ]]; then
+            echo "Saving key: ${HOST}__${KEY}.pub to vault.."
+            cat "$k" > "$KEY_FILE"
+        else
+            echo "[ERR] Key ${HOST}__${KEY}.pub already exists in vault.."
+        fi
+    done
+}
+
+# copy keys to vault
+# keys-list -f
+keys-list() {
+    local KEY= HEAD=
+    [[ "$1" == "-h" ]] && usage "list "
+    ( 
+        echo -e "Id\tUser\tHost\tFormat"
+        for k in $HOME/.config/keys/*.pub; do
+            KEY="${k##*/}" KEY="${KEY%.*}"
+            HEAD=$(cat $k | tr '\n' ' ' | cut -d" " -f2 | head -c 10)
+            echo -e "${HEAD}\t${USER}\t"${KEY//__/$'\t'}
+        done 
+    ) | column -t
+}
+
+
+
+# copy keys to vault
+# keys-install KEYID|FILE remoteserver
+keys-install() {
+    local SERVER="${1}" KEY=${2:-rsa} KF=${1}
+    [[ "$1" == "-h" ]] && usage "install server [key]"
+    [[ -z "$KEY" ]] && echo "You must provide a key/file to install.." && return 4
+    [[ -z "$SERVER" ]] && echo "You must inform a server to deploy key.." && return 4
+    KEYF=$(keys-find "$KEY")
+    if [[ -n "$KEYF" ]] && [[ -f $KEYF ]]; then
+        key-confirm "$KEYF" || return 4
+        echo "Key $KEY found at: $KF .."
+        echo "Installing on server: $SERVER ..."
+        cat $KEYF | ssh $SERVER "set -e; umask 0177; mkdir -p ~/.ssh; umask 0077; cat >> ~/.ssh/authorized_keys" || return 4
+        cat <<EOF
+-------------------------------------
+Public Key was installed sucessfully!
+-------------------------------------
+Key: $KEYF
+
+Now try logging into the machine, with "ssh '$SERVER'", and check in:
+  $ cat .ssh/authorized_keys
+to make sure we haven't added extra keys that you weren't expecting.
+EOF
+        return 0
+    fi
+    echo "ERROR: Key $KEY not found!"
+    return 4
+}
+
+#export keys as PEM
+keys-export() {
+    local MODE="${1:-pem}" KEY=${2:-rsa}
+    [[ "$1" == "-h" ]] && usage "export [pem|pkcs8] [key]"
+    KEYF=$(keys-find "$KEY")
+    if [[ -n "$KEYF" ]] && [[ -f $KEYF ]]; then
+        ssh-keygen -e -f "$KEYF" -m "$MODE"
+#        ssh-keygen -e -f "$KEYF" -m PKCS8
+        return 0
+    fi
+    echo "ERROR: Key $KEY not found!"
+    return 4
+
+}
+
+keys-find() {
+    local KEY=${1} HOST=$(hostname)
+    [[ "$1" == "-h" ]] && usage "find [key]"
+    #primeiro pelo nome
+    KEYF=$(find $HOME/.ssh -iname "*${KEY}*.pub" -maxdepth 1 -type f)
+    if [[ -n "$KEYF" ]] && [[ -f "$KEYF" ]]; then
+        echo "$KEYF"
+        return 0
+    fi
+    KEYF=$(find $HOME/.config/keys -iname "${HOST}*${KEY}*.pub" -maxdepth 1 -type f)
+    if [[ -n "$KEYF" ]] && [[ -f "$KEYF" ]]; then
+        echo "$KEYF"
+        return 0
+    fi
+    KEYF=$(find $HOME/.config/keys -iname "*${KEY}*.pub" -maxdepth 1 -type f)
+    if [[ -n "$KEYF" ]] && [[ -f "$KEYF" ]]; then
+        echo "$KEYF"
+        return 0
+    fi
+    # agora procura pelo chave
+    for k in $HOME/.ssh/*.pub; do
+        HEAD=$(cat $k | tr '\n' ' ' | cut -d" " -f2)
+        [[ "$HEAD" == *"$KEY"* ]] && echo "$k" && return 0
+    done
+    # agora procura pelo chave
+    for k in $HOME/.config/keys/*.pub; do
+        HEAD=$(cat $k | tr '\n' ' ' | cut -d" " -f2)
+        [[ "$HEAD" == *"$KEY"* ]] && echo "$k" && return 0
+    done
+    echo ""
+    return 4
+}
+
+
+# copy a key to
+keys-export-pem() {
+    [[ "$1" == "-h" ]] && usage "export-pem [key]"
+    keys-export "pem" $1
+}
+
+# copy a key to
+keys-export-pkcs8() {
+    [[ "$1" == "-h" ]] && usage "keys-export-pkcs8 [key]"
+    keys-export "PKCS8" $1
+}
+
+
+# copy a key to
+keys-copy() {
+    local KEY=${1:-rsa} NOECHO="$2"
+    [[ "$1" == "-h" ]] && usage "copy [key] [--quiet]"
+    KEYF=$(keys-find "$KEY")
+    if [[ -n "$KEYF" ]] && [[ -f $KEYF ]]; then
+        cat $KEYF | clipboard
+        echo "Key $KEY in $KEYF copied to clipboard!"
+        [[ -z $NOECHO ]] && cat $KEYF
+        return 0
+    fi
+    error "Key $KEY not found!"
+    return 4
+}
+
+list-commands() {
+    while IFS='' read -r line || [[ -n "${line// }" ]]; do
+        echo "   - $line"
+    done < <(cat $0 | grep -Eo "^keys-([a-zA-Z0-9_-]+)" | sed 's/^keys-//' | sort)
+}
+
+
+key-confirm() {
+    local KEYF="$1"
+    echo "The key selected is: $KEYF !"
+    read -p "do you wish to continue? [y/n]" -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        return 1
+    else
+        return 0
+    fi
+}
+
+error() {
+    echo $*
+    exit 4
+}
+
+
+usage() {
+    [[ -n "$2" ]] && echo "$2"
+    echo "Usage: "
+    echo "  keys $1"
+    exit 4
+}
+
+
+keys-gpg() {
+    [[ "$1" == "-h" ]] && usage "gpg [action]"
+    local action="${1:-list}"
+    if function_exists "keys-gpg-$action"; then
+        shift
+        keys-gpg-$action "$@"
+    fi
+}
+
+keys-gpg-new() {
+    gpg --default-new-key-algo rsa4096 --gen-key
+    cat <<EndOfText
+Now run these commands:
+
+gpg --expert --edit-key YOURKEYID
+gpg> setpref AES AES256 CAST5 3DES SHA256 SHA512 SHA1 RIPEMD160 ZIP ZLIB ks-modify no-mdc
+Set preference list to:
+     Cipher: AES, AES256, CAST5, 3DES
+     AEAD:
+     Digest: SHA256, SHA512, SHA1, RIPEMD160
+     Compression: ZIP, ZLIB, Uncompressed
+Really update the preferences? (y/N) y
+gpg> save
+EndOfText
+
+}
+
+keys-gpg-export() {
+    [[ "$1" == "-h" ]] && usage "gpg export [email]" "Exporta a chave pública."
+    gpg --armor --export "$1"
+}
+
+
+keys-gpg-backup() {
+    [[ "$1" == "-h" ]] && usage "gpg backup [email] [file]"
+    local out=${2:-$HOME/.config/keys/private.asc}
+    gpg --output - --armor --export-secret-keys \
+        --export-options export-backup "$@" | \
+        gpg --armor --output $out --symmetric --cipher-algo AES256
+    gpg --export-ownertrust < $HOME/.config/keys/trustdb.txt
+}
+
+
+keys-gpg-restore() {
+    [[ "$1" == "-h" ]] && usage "gpg restore [file]"
+    local input=${1:-$HOME/.config/keys/private.asc}
+    [[ ! -f "$input" ]] && usage "Invalid restore file..."
+    gpg --armor --decrypt --output - --cipher-algo AES256 "$input" | \
+        gpg --import-options restore --import -
+    [[ -f $HOME/.config/keys/trustdb.txt ]] && \
+        gpg --import-ownertrust < $HOME/.config/keys/trustdb.txt
+}
+
+keys-encrypt() {
+    gpg --armor --symmetric --cipher-algo AES256 "$@"
+}
+
+keys-gpg-list() {
+    [[ "$1" == "-h" ]] && usage "gpg list"
+    gpg --list-secret-keys --keyid-format=long
+}
+
+# copy a key to
+keys-help() {
+    cat <<EndOfText
+Usage: keys command [cmd_options]
+
+Utility to easily handle ssh/gpg keys generation
+Example: keys generate
+
+Avaliable commands:
+EndOfText
+    list-commands
+}
+
+ACTION="keys-${1:-help}"
+shift
+$ACTION "$@"

@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+#global variables
+git_array=()
+
+# For underlining headers.
+t_bold="\E[1m"
+t_und="\E[4m"
+t_reset="\E[m\017"
+t_blue='\033[0;34m'
+
+# Check if directory is a git dir
+#  _is_git_dir
+_is_git_dir() {
+    (
+        [[ -n "$1" ]] && cd "$1"
+        [[ -d ".git" ]] && return 0
+        git rev-parse --is-inside-work-tree > /dev/null 2>&1 && return 0 || return 1
+    )
+}
+
+_get_topdir() {
+    git rev-parse --show-toplevel
+}
+
+_in_array() {
+    local _s="$1" _arr=
+    shift
+    IFS=: _arr="$*"
+    [[ ":${_arr}:" =~ ":${_s}:" ]] && return 0 || return 1
+}
+
+_process_dir() {
+    local d="$1"
+    shift
+    _is_git_dir "$d" || return 1
+
+    cd "$d"
+
+    #get topmost dir
+    local topd=$(_get_topdir)
+
+    cd "$topd"
+    if ! _in_array "$topd" "${git_array[@]}"; then
+        # process dir
+        echo -e "${t_blue}${t_bold}${t_und}${d}:${t_reset}"
+        git_array+=("$topd")
+        git "$@"
+    fi #already processed
+
+}
+
+# Check if directory is a git dir
+#  _is_git_dir
+currd="$PWD"
+for d in *; do
+    cd "$currd"
+    [[ ! -d "$d" ]] && continue
+    _process_dir "$d" "$@"
+done

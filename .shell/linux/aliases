@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+# To the extent possible under law, the author(s) have dedicated all
+# copyright and related and neighboring rights to this software to the
+# public domain worldwide. This software is distributed without any warranty.
+# You should have received a copy of the CC0 Public Domain Dedication along
+# with this software.
+# If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
+
+# base-files version 4.3-2
+
+# ~/.config/settings/ubuntu/.myaliases: executed by bash(1) for interactive shells.
+
+################################
+# UBUNTU exclusive functions
+################################
+
+#UBUNTU ONLY SETTINGS
+alias install='sudo apt install'
+alias update='sudo apt update'
+alias autoremove='sudo apt-get autoremove'
+alias upgrade='sudo apt upgrade'
+alias dist-upgrade='sudo apt dist-upgrade'
+alias remove='sudo apt remove'
+alias purge='sudo apt purge'
+alias clean='sudo apt-get clean && sudo apt-get autoclean && sudo apt-get autoremove && sudo apt-get update'
+alias search='apt-cache search'
+alias sapt='sudo apt'
+alias s='sudo'
+
+# enable color support of ls and also add handy aliases
+if [[ -f /usr/bin/dircolors ]]; then
+    [[ -r "$HOME/.dircolors" ]] && eval "$(/usr/bin/dircolors -b ~/.dircolors)" || eval $(/usr/bin/dircolors -b)
+    #export LS_COLORS='$LS_COLORS:ow=01;33'
+    export GCC_COLORS='error=01;31:warning=01;35:note=01;36:caret=01;32:locus=01:quote=01'
+    alias ls='/bin/ls -hF --color=auto'
+    alias grep='/bin/grep --color=auto'
+    alias fgrep='/bin/fgrep --color=auto'
+    alias egrep='/bin/egrep --color=auto'
+fi
+
+#coping aliases
+[[ -f /usr/bin/rsync ]] && alias cp='/usr/bin/rsync -ah --partial --inplace --info=progress2'
+
+#backup
+alias mkbackup='$HOME/bin/backup backup'
+alias restore='$HOME/bin/backup restore --merge'
+
+#outras funcoes
+alias psync='rsync -a --info=progress2 --status'
+
+#criar shortcuts
+alias shortcut-new='/usr/bin/nohup /usr/bin/gnome-desktop-item-edit --create-new $HOME/Desktop </dev/null &>/dev/null &'
+
+#alias for fix printer
+alias fix-printer='sudo systemctl stop cups && sudo systemctl start cups'
+
+#screenshot default save dir
+alias gss='gsettings set org.gnome.gnome-screenshot auto-save-directory "$(echo $PWD)"'
+
+#alias for general use
+#rerun last command as sudo
+alias please='sudo $(fc -ln -1)'
+
+#alias for system administration
+alias sys='sudo systemctl'
+
+#alias for find all live hosts in machine
+alias live-hosts='nmap -sP "$(ip -4 -o route get 1 | cut -d " " -f 7)"/24 | grep report | cut -d " " -f 5-'
+
+#random password 30 chars
+alias random="strings /dev/urandom | grep -o '[[:alnum:]]' | head -n 30 | tr -d '\n'; echo"
+
+# Repair a SD CARD
+alias repair-sdcard='sudo dosfsck -w -r -l -a -v -t '
+
+#convert office
+alias xls='soffice --headless --convert-to ods'
+alias doc='soffice --headless --convert-to odt'
+
+# clipboard compatibility
+alias pbcopy='xclip -selection clipboard'
+alias pbpaste='xclip -selection clipboard -o'
+alias copy="tr -d '\n' | xclip -selection clipboard"
+
+# alias on linux for batcat
+alias bat='batcat'
+
+# windows subsystem for linux
+if [[ -n "$WSL_DISTRO_NAME" ]]; then
+    alias xdg-open='wslview'
+
+    #shortcuts aliases
+    alias documents='cd /win/Documents'
+    alias downloads='cd /win/Downloads'
+    alias desktop='cd /win/Desktop'
+    alias desk='cd /win/Desktop'
+    alias music='cd /win/Music'
+    alias videos='cd /win/Videos'
+    alias projetos='cd /win/projetos'
+    alias proj='cd /win/projetos'
+    alias D='cd /win/Downloads'
+    alias V='cd /win/Videos'
+    alias W='cd /win/Documents'
+    alias F='cd /win/Pictures'
+    alias M='cd /win/Music'
+    alias p='cd /win/projetos'
+fi
+################################
+# BASH EXCLUSIVE ALIASES
+################################
+#if [[ -n "${BASH_VERSION// }" ]]; then
+
+#fi #BASH
+################################
+# ZSH EXCLUSIVE ALIASES
+################################
+#if [[ -n "${ZSH_VERSION// }" ]]; then
+
+#fi #ZSH

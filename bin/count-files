@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+_dir="${1:-$PWD}"
+_dirname="$_dir"
+shift
+
+
+if command -v gfind > /dev/null 2>&1; then
+    _total=$(gfind "${_dirname}" -type f "$@" -printf ' ' 2>/dev/null | wc -c)
+else
+    _total=$(find "${_dirname}" -type f "$@" -print 2>/dev/null | wc -l)
+fi
+if [[ "$?" -ne 0 ]]; then
+    printf "[ERRO]: %s\n" "Some error ocurred findind files..."
+    printf "[ERRO]: %s\n" "find ${_dir} -type f $*"
+    return 1
+fi
+printf "Directory: %s\n" "$_dirname"
+printf "Total: %d\n" "$_total"

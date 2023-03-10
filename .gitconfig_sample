@@ -1,0 +1,9 @@
+[include]
+    path = ~/.config/gitconfig
+#[user]
+#    signingkey = "ssh-rsa <publickey>"
+#[commit]
+#    gpgsign = true
+#[gpg]
+#    format = ssh
+

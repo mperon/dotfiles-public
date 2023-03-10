@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+monitors=$(xrandr | grep " connected" | wc -l)
+
+if [[ "$monitors" -gt 1 ]]; then
+    /usr/bin/conky -y 350
+else
+    /usr/bin/conky
+fi

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+# -*- mode: bash -*-
+
+bat() {
+    local index
+    local args=("$@")
+    for index in $(seq 0 ${#args[@]}) ; do
+        case "${args[index]}" in
+        -*) continue;;
+        *)  [ -e "${args[index]}" ] && args[index]="$(cygpath --windows "${args[index]}")";;
+        esac
+    done
+    command bat "${args[@]}"
+}

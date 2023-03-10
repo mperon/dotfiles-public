@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+# Extract common file formats
+
+a_file= a_ignore=1 a_inexistent=() a_unknown=()
+
+
+__main() {
+    local file=
+    # Display usage if no parameters given
+    if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+        __usage
+    fi
+    if [[ "$1" == "-a" ]] || [[ "$1" == "--abort" ]]; then
+        a_ignore=0
+        shift
+    fi    
+    if [[ "$#" -lt 1 ]]; then
+        echo "[ERROR] No files to extract..."
+        __usage
+    fi
+
+    for file in "$@"; do
+        if [[ "${file:0:1}" == "-" ]]; then
+            #modifier
+            echo "[ERROR] Invalid parameter [${file}]! Aborting..."
+            __usage
+        fi
+        [[ -d "${file}" ]] && continue # it is a folder, just ignore-it
+
+        if [[ -f "${file}" ]]; then
+            __extract "${file}"
+        else
+            if [[ "${a_ignore}" == "1" ]]; then
+                a_inexistent+=("${file}")
+                continue
+            else
+                echo "[ERROR] ${file} did not exists! Aborting.."
+                __usage
+            fi
+
+        fi
+    done
+    __print_report
+}
+
+__print_report() {
+    if [[ "${a_ignore}" == "1" ]]; then
+        if [[ "${#a_inexistent[@]}" -gt 0 ]] || [[ "${#a_unknown[@]}" -gt 0 ]]; then
+            echo ""
+            echo "Extract Report:"
+            echo "---------------"
+            echo ""
+        fi
+        if [[ "${#a_inexistent[@]}" -gt 0 ]]; then
+            echo "- Files That hasnt been found:"
+            __print_data "    " "${a_inexistent[@]}"
+        fi
+        if [[ "${#a_unknown[@]}" -gt 0 ]]; then
+            echo "- Unknown format files:"
+            __print_data "    " "${a_unknown[@]}"
+        fi
+    fi
+}
+
+__print_data() {
+    local numspaces="${1}"
+    shift
+    for item in "$@"; do
+        echo "${numspaces}${item}"
+    done
+}
+
+__extract() {
+    local n="${1}"
+    case "${n%,}" in
+        *.tar.bz2|*.tar.gz|*.tar.xz|*.tbz2|*.tgz|*.txz|*.tar) 
+            tar xvf "$n"
+            ;;
+        *.lzma)
+            unlzma ./"$n"
+            ;;
+        *.bz2)
+            bunzip2 ./"$n"
+            ;;
+        *.rar)
+            unrar x -ad ./"$n"
+            ;;
+        *.gz)
+            gunzip ./"$n"
+            ;;
+        *.zip)
+            unzip ./"$n"
+            ;;
+        *.z)
+            uncompress ./"$n"
+            ;;
+        *.7z|*.arj|*.cab|*.chm|*.deb|*.dmg|*.iso|*.lzh|*.msi|*.rpm|*.udf|*.wim|*.xar)
+            7z x ./"$n"
+            ;;
+        *.xz)
+            unxz ./"$n"
+            ;;
+        *.exe)
+            cabextract ./"$n"
+            ;;
+        *)
+            if [[ "${a_ignore}" == "1" ]]; then
+                a_unknown+=("${n}")
+            else
+                echo "Unknown archive file: ${n} "
+                __usage
+            fi
+            ;;
+    esac
+}
+
+__usage() {
+    cat <<HELP_USAGE
+Extracts files from several formats..
+
+    ${0##*/} [-h] [-a] file1, [file2, ...]
+
+ACCEPTED FORMATS:
+    *.7z      *.dmg     *.msi       *.tar.xz    *.wim
+    *.arj     *.exe     *.rar       *.tbz2      *.xar
+    *.bz2     *.gz      *.rpm       *.tgz       *.xz
+    *.cab     *.iso     *.tar       *.txz       *.z
+    *.chm     *.lzh     *.tar.bz2   *.udf     *.zip
+    *.deb     *.lzma    *.tar.gz
+
+ARGUMENTS:
+    -a|--abort      Abort on errors..
+    -h|--help       Show help
+HELP_USAGE
+    exit 4
+}
+
+
+__main "$@"
+exit $?

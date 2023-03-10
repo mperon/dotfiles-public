@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+vmManage="/usr/bin/VBoxManage"
+vmAction=
+COLUMNS=$(tput cols)
+
+main() {
+    vmAction="$1"
+    shift
+    if [[ -z "${vmAction// }" ]]; then
+        __usage
+    fi
+    #removes -- or -
+    if [[ "${vmAction}" == -* ]]; then
+        vmAction=${vmAction:1}
+    fi
+    if [[ "${vmAction}" == -* ]]; then
+        vmAction=${vmAction:1}
+    fi
+    vmAction="${vmAction,,}"
+    runVM "$@"
+    exit $?
+}
+
+runVM() {
+    case "${vmAction// }" in
+        start|init|s)
+            local vmName="$1"; shift
+            __isRunning "$vmName" && echo "Virtual Machine $vmName is already Running..." && \
+                return 0
+            echo "Starting VirtualBox..."
+            ${vmManage} startvm "$vmName" --type headless "$@"
+            [[ "$?" -eq 0 ]] && ${vmManage} controlvm "$vmName" vrde off && \
+                echo "Done!"
+            ;;
+        start-vd|startvd)
+            local vmName="$1"; shift
+            __isRunning "$vmName" && echo "Virtual Machine $vmName is already Running..." && \
+                return 0
+            echo "Starting VirtualBox With Remote Desktop..."
+            ${vmManage} startvm "$vmName" --type headless "$@" && \
+                echo "Done!"
+            ;;
+        running|run|r)
+            ${vmManage} list runningvms "$@"
+            ;;
+        list|l|ls)
+            ${vmManage} list vms "$@"
+            ;;
+        status|if)
+            ${vmManage} showvminfo "$@" | sed -n -e '/Name:/p' -e '/Guest OS:/p' -e '/^UUID:/p' \
+                -e '/Snapshot folder:/p' -e '/Hardware UUID:/p' \
+                -e '/Memory size:/p' -e '/VRAM size:/p' -e '/CpU exec cap:/p' \
+                -e '/Number of CpUs:/p' -e '/State:/p'
+            ;;
+        statusall|ifs)
+            __statusAll
+            ;;
+        stop|st)
+            local vmName="$1"; shift
+            ! __isRunning "$vmName" && echo "Virtual Machine $vmName is not running.." && \
+                return 0
+            vboxmanage controlvm "$vmName" poweroff soft "$@"
+            ;;
+        pause|p)
+            local vmName="$1"; shift
+            local vmState=$(__getVMState "$vmName")
+            [[ "${vmState// }" != "running" ]] && echo "Virtual Machine $vmName is not running.." && \
+                return 0
+            ${vmManage} controlvm "$vmName" pause "$@"
+            ;;
+        resume|rs)
+            local vmName="$1"; shift
+            local vmState=$(__getVMState "$vmName")
+            [[ "${vmState// }" != "paused" ]] && echo "Virtual Machine $vmName is not paused.." && \
+                return 0
+            ${vmManage} controlvm "$vmName" resume "$@"
+            ;;
+        reset|restart|r)
+            local vmName="$1"; shift
+            ! __isRunning "$vmName" && echo "Virtual Machine $vmName is not running.." && \
+                return 0
+            ${vmManage} controlvm "$vmName" reset "$@"
+            ;;
+        getuid|uid)
+            ${vmManage} showvminfo "$@" | grep "UID:" | cut -d":" -f2 | v
+            ;;
+        control|co|ct|c)
+            ${vmManage} controlvm "$@"
+            ;;
+        help|h)
+            __usage
+            ;;
+        *)
+            ${vmManage} "$vmAction" "$@"
+            ;;
+    esac
+    return $?
+}
+
+__repeat() {
+    local _times="$2"
+    local _str="$1"
+    for ((i=0; i<$_times; i++)); do
+        printf "%s" "$_str"
+    done
+    printf "\n"
+}
+
+__statusAll() {
+    local _first=y
+    while IFS='' read -r line || [[ -n "${line// }" ]]; do
+        line="${line:1:-1}"
+        [[ "$_first" == "y" ]] && first=n && \
+        __repeat "-" "$COLUMNS-5"
+        echo "VM: $line"
+        __repeat "-" "$COLUMNS-5"
+
+        ${vmManage} showvminfo "$line" "$@" | sed -n -e '/Name:/p' -e '/Guest OS:/p' -e '/^UUID:/p' \
+            -e '/Snapshot folder:/p' -e '/Hardware UUID:/p' \
+            -e '/Memory size:/p' -e '/VRAM size:/p' -e '/CpU exec cap:/p' \
+            -e '/Number of CpUs:/p' -e '/State:/p'
+        __repeat "-" "$COLUMNS-5"
+
+    done < <( ${vmManage} list vms | grep -Eo '^["]([^"]+)"' | \
+                sed -e "s/^[[:space:]]\+//g" )
+
+}
+
+__isRunning() {
+    local vmName="$1"
+    ret=$(${vmManage} list runningvms | sed -e 's/"/ /g' -e 's/$/ /' | grep -F " $vmName ")
+    [[ -z "${ret// }" ]] && return 1
+    return 0
+}
+
+__getVMState() {
+    local vmName="$1"
+    ${vmManage} showvminfo "$vmName" | sed -n -e '/State:/p' | awk '{print $2}' | head -n 1
+}
+
+__usage() {
+    cat <<HELP_USAGE
+    $0
+        (ACTION) vm_name [..optional..]
+      ACTION: 		Explanation:
+  ----------------- ------------------------------------------
+       s|start|init    	Start an vm withouth Remote Desktop
+      sv|startvd|initvd	Start an vm with Remote Desktop
+       r|running|run 	List all running vms
+       l|list		List all vms installed
+      st|stop		Stop an specific vm
+       p|pause 		Pauses an specific vm
+      if|status		Show Status of an specific vm
+      ifs|statusall	Show Status of all vms
+      rs|resume		Resumes an specific vm
+       r|restart|reset	Restarts an vm
+       c|co|ct|control 	Controls an vm from VBoxManage controlvm
+  ----------------- ------------------------------------------
+
+   All others actions will be passed on to VBoxManage command!
+
+HELP_USAGE
+    exit 4
+}
+
+main "$@"

@@ -1,0 +1,15 @@
+#compdef projects proj
+# -*- mode: bash -*-
+
+integer ret=1
+
+local -a args
+
+args+=(
+    '1:project:_directories -W $P/ -g "*(.)"'
+)
+
+_arguments $args[@] && ret=0
+
+return ret
+

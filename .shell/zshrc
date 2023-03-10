@@ -1,0 +1,392 @@
+#!/usr/bin/env zsh
+#vim: ts=4 sw=4 et ft=sh
+# -*- mode: bash -*-
+# User data profile for interactive zsh(1) shells.
+# See zshbuiltins(1) and zshoptions(1) for more details.
+
+# Skip all this for non-interactive shells
+[[ -z "$PS1" ]] && echo "nooooo" && return
+
+# Defines shell name
+SH_NAME=zsh
+
+# Detects OSX
+[[ -z "${OS}" ]] && OS=$(uname -s | cut -d"_" -f1 | tr '[:upper:]' '[:lower:]')
+
+# load default settings
+[[ -f /etc/zshrc ]] && source /etc/zshrc
+
+#-----------------------
+# Options Configuration
+#-----------------------
+# History
+setopt appendhistory # append to history, not overwrite
+setopt hist_ignore_all_dups # remove older duplicate entries from history
+setopt hist_ignore_space # ingnore spaces on history
+setopt hist_expire_dups_first # expire duplicates before others commands
+setopt hist_reduce_blanks # remove superfluous blanks from history items
+setopt inc_append_history # save history entries as soon as they are entered
+setopt hist_verify # Treat the '!' character specially during expansion.
+setopt bang_hist # i really dont know
+setopt extended_history # Write the history file in the ":start:elapsed;command" format.
+setopt share_history # share history between different instances of the shell
+
+# General
+setopt no_hup # Don't hang up background jobs
+setopt null_glob # get rid of “No match found” when running “rm *”
+setopt nomatch # Changing/making/removing directory
+setopt auto_pushd # Changing/making/removing directory
+setopt pushd_ignore_dups # Changing/making/removing directory
+setopt pushdminus # Changing/making/removing directory
+setopt prompt_subst # substitute prompt
+
+# autocomplete options
+setopt always_to_end # move cursor to end if word had one match
+setopt auto_cd # cd by typing directory name if it's not a command
+setopt auto_list # Automatically list choices on ambiguous completion.
+setopt auto_menu # automatically use menu completion
+setopt complete_in_word # Complete from both ends of a word.
+unsetopt menu_complete     # Do not autoselect the first completion entry.
+unsetopt flow_control      # Disable start/stop characters in shell editor.
+#---------------------------------------------------------------
+# Function to speed up command checking (Bash will have it too)
+#---------------------------------------------------------------
+cmd_exists() {
+    (( $+commands[$1] ));
+}
+
+#-----------------------
+# Load ZSH files
+#-----------------------
+# Load System Dependent and functions an aliases
+for f in profile exports aliases functions; do
+    # loads generic first
+    [[ -f "$HOME/.shell/$f" ]] && source "$HOME/.shell/$f"
+
+    # loads the OS specific at last
+    [[ -f "$HOME/.shell/${OS}/$f" ]] && source "$HOME/.shell/${OS}/$f"
+done
+unset f
+# Load zshrc for os dependant
+[[ -f "$HOME/.shell/${OS}/zshrc" ]] && source "$HOME/.shell/${OS}/zshrc"
+# Load private functions, aliases an env variables.
+[[ -f "$HOME/.shell/private" ]] && source "$HOME/.shell/private"
+
+#-----------------------
+# Key bindings
+#-----------------------
+bindkey -e
+setopt EMACS
+
+## handy keybindings {{{
+bindkey "^A"      beginning-of-line # CTRL + A
+bindkey "^[[1;5D" beginning-of-line # CTRL + <
+bindkey "^[OH"    beginning-of-line # HOME
+bindkey "^E"      end-of-line       # CTRL + E
+bindkey "^[[1;5C" end-of-line       # CTRL + >
+bindkey "^[OF"    end-of-line       # END
+bindkey "^[[1;3D" backward-word     # ALT  + <
+bindkey "^[[1;3C" forward-word      # ALT  + >
+bindkey "^[[3~"   delete-char       # DELETE
+bindkey "^[[A"    history-search-backward # UP ARROW
+bindkey "^[[B"    history-search-forward  # DOWN ARROW
+bindkey "^[[2~"   overwrite-mode          # INSERT
+bindkey '^[h'     backward-word        # ALT + h
+bindkey '^[l'     forward-word         # ALT + l
+bindkey '^[j'     backward-char        # ALT + j
+bindkey '^[k'     forward-char         # ALT + k
+bindkey '^[y'     backward-delete-word # ALT + y
+bindkey '^[o'     delete-word          # ALT + o
+bindkey '^[u'     backward-delete-char # ALT + u
+bindkey '^[i'     delete-char          # ALT + i
+bindkey '^[^H'    backward-delete-word # CTRL + h
+bindkey '^[^L'    delete-word          # CTRL + l
+bindkey '^[y'     redo                 # ALT + y
+bindkey '^[z'     undo                 # ALT + z
+bindkey '^L'      clear-screen         # CTRL + l
+bindkey "^Y"      accept-and-hold      # CTRL + Y
+bindkey "^N"      insert-last-word     # CTRL + N
+#}}}
+
+## insert sudo {{{
+sudo-command-line() {
+    [[ -z $BUFFER ]] && zle up-history
+    [[ $BUFFER != sudo\ * ]] && BUFFER="sudo $BUFFER"
+    zle end-of-line                 # move cursor to end-of-line
+}
+zle -N sudo-command-line
+bindkey "^T" sudo-command-line    # Ctrl + T
+#}}}
+
+## complete empty command line with cd {{{
+user-complete(){
+    case $BUFFER in
+        "" )
+        BUFFER="cd "
+        zle end-of-line
+        zle expand-or-complete
+        ;;
+        * )
+        zle expand-or-complete
+        ;;
+    esac
+}
+zle -N user-complete
+bindkey "\t" user-complete
+#}}}
+
+## Enable Ctrl-x-e to edit command line {{{
+autoload -U edit-command-line
+zle -N edit-command-line
+bindkey '^xe' edit-command-line
+bindkey '^x^e' edit-command-line
+#}}}
+
+# Use Ctrl-Z to switch back to vim {{{
+# Nicked from https://sheerun.net/2014/03/21/how-to-boost-your-vim-productivity/
+# To achieve it I pause Vim by pressing Ctrl-z. run command, then press Ctrl-z.
+fancy-ctrl-z () {
+  if [[ $#BUFFER -eq 0 ]]; then
+    BUFFER="fg"
+    zle accept-line
+  else
+    zle push-input
+    zle clear-screen
+  fi
+}
+zle -N fancy-ctrl-z
+bindkey '^Z' fancy-ctrl-z
+#}}}
+
+#-----------------------
+# Completion system
+#-----------------------
+## load required modules {{{
+zmodload zsh/complist
+autoload -Uz compinit # load compinit
+autoload -U zstyle+ # load zstyle and stuff
+autoload -U colors #load colors
+colors
+#}}}
+
+## define some variables {{{
+# disable autocorrect of dotfiles
+# (https://unix.stackexchange.com/questions/422443/stop-zsh-from-trying-to-correct-ssh-to-ssh-as-an-argument)
+CORRECT_IGNORE_FILE='.*'
+
+# disable sessions
+# https://apple.stackexchange.com/questions/427561/macos-zsh-sessions-zsh-history-and-setopt-append-history
+SHELL_SESSIONS_DISABLE=1
+#}}}
+
+# sets fpath to existing directories {{{
+for d in $HOMEBREW_PREFIX/share/zsh-completions \
+    $HOMEBREW_PREFIX/share/zsh/site-functions $XDG_CONFIG_HOME/functions/zsh; do
+        [[ -d  "$d" ]] && fpath=($d $fpath)
+done
+unset d
+#}}}
+
+## Load completions {{{
+if [[ -n ${XDG_CACHE_HOME}/zcompdump(#qN.mh+24) ]]; then
+  compinit -d ${XDG_CACHE_HOME}/zcompdump
+else
+  compinit -C -d ${XDG_CACHE_HOME}/zcompdump
+fi
+#}}}
+
+# load definitions from custom zsh completions {{{
+[[ -f "$XDG_CONFIG_HOME/functions/zsh-definitions.sh" ]] && \
+    source "$XDG_CONFIG_HOME/functions/zsh-definitions.sh"
+#}}}
+
+#-------------------------
+# Completion system styles
+#--------------------------
+
+## Use cache {{{
+# Some functions, like _apt and _dpkg, are very slow. You can use a cache in
+# order to proxy the list of results (like the list of available debian
+# packages)
+zstyle ':completion:*' use-cache 1
+zstyle ':completion:*' cache-path ${XDG_CACHE_HOME:-$HOME/.cache}/zcompcache
+#}}}
+
+## Enable rehash on completion to new commands to be found automatically {{{
+_force_rehash() {
+  (( CURRENT == 1 )) && rehash
+  return 1  # Because we didn't really complete anything
+}
+#}}}
+
+## define completers {{{
+# define completer order
+zstyle ':completion:*' completer _force_rehash _list _complete _oldlist _expand _ignored _match _correct _approximate _prefix
+#}}}
+
+## define completion default config {{{
+zstyle ':completion:*' file-sort name # determine in which order the names (files) should be
+zstyle ':completion:*:default' list-prompt '%S%M matches%s'
+zstyle ':completion:*' group-name ''
+zstyle ':completion:*:manuals' separate-sections true
+zstyle ':completion:*:manuals.(^1*)' insert-sections true
+zstyle ':completion:*' ignored-patterns '_*' # Ignore Everyting starting with underscore
+
+zstyle ':completion:*' complete true # Complete the alias when _expand_alias is used as a function
+zstyle ':completion:*' menu select # Use menu completion
+zstyle ':completion:*' verbose true # Verbose completion results
+zstyle ':completion:*' list-dirs-first true # Keep directories and files separated
+zstyle ':completion:*' accept-exact-dirs true # Don't try parent path completion if the directories exist
+
+# Pretty messages during pagination
+zstyle ':completion:*' list-prompt '%SAt %p: Hit TAB for more, or the character to insert%s'
+zstyle ':completion:*' select-prompt '%SScrolling active: current selection at %p%s'
+
+#zstyle ':completion:*' show-completer true # Show message while waiting for completion
+#}}}
+
+## zstyle completino matcher configuration {{{
+#By default, the completion system will expand // to /*/. For example, cd ~//Documents will be expanded to cd ~/*/Documents.
+#Usually, on Unix systems, // is expanded to /. If you prefer this behavior, you can set the style squeeze-slashes to true as follows:
+zstyle ':completion:*' squeeze-slashes true
+# case-insensitive (uppercase from lowercase) completion
+zstyle ':completion:*' matcher-list 'm:{a-z}={A-Z}'
+# case-insensitive (all) completion
+zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
+# case-insensitive,partial-word and then substring completion
+zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}' 'r:|[._-]=* r:|=*' 'l:|=* r:|=*'
+# Fuzzy matching of completions for when you mistype them:
+zstyle ':completion:*:match:*' original only
+zstyle ':completion:*:approximate:*' max-errors 1 numeric
+# }}}
+
+## add colors to completions {{{
+zstyle ':completion:*' list-colors ${(s.:.)LSCOLORS}
+zstyle -e ':completion:*:approximate:*' max-errors 'reply=( $(( ($#PREFIX + $#SUFFIX) / 3 )) )'
+#zstyle ':completion:*:descriptions' format "- %d -"
+zstyle ':completion:*:*:*:*:descriptions' format '%F{green}-- %d --%f'
+#zstyle ':completion:*:corrections' format "- %d - (errors %e})"
+zstyle ':completion:*:*:*:*:corrections' format '%F{yellow}!- %d (errors: %e) -!%f'
+zstyle ':completion:*:messages' format ' %F{purple} -- %d --%f'
+zstyle ':completion:*:warnings' format ' %F{red}-- no matches found --%f'
+#}}}
+
+## functions and commands styles {{{
+zstyle ':completion:*:functions' ignored-patterns '(_*|pre(cmd|exec))' # Ignore completion functions for commands you don't have.
+zstyle ':completion:*:*:-command-:*:*' ignored-patterns '*.*' #ignore commands
+zstyle ':completion:*:*:-command-:*:*' group-order alias functions commands builtins
+
+## Enable more processes in completion of programs like killall:
+zstyle ':completion:*:*:*:*:processes' command 'ps -u $USER -o pid,user,comm -w'
+zstyle ':completion:*:*:kill:*:processes' list-colors '=(#b) #([0-9]#) ([0-9a-z-]#)*=01;36=0=01'
+zstyle ':completion:*:processes-names'  command 'ps c -U ${USER} -o command | sort | uniq'
+zstyle ':completion:*:(killall|pkill|kill):*'   menu yes select
+zstyle ':completion:*:(killall|pkill|kill):*'   force-list always
+
+zstyle ':completion:*:(rm|killall|pkill|kill|diff):*' ignore-line yes
+zstyle ':completion:*:rm:*' file-patterns '*:all-files'
+#}}}
+
+## Sets order of completion for tilde expansion {{{
+zstyle ':completion:*:-tilde-:*' group-order 'named-directories' 'path-directories' 'users' 'expand'
+zstyle ':completion:*' squeeze-slashes true
+#}}}
+
+## Don't complete uninteresting users. {{{
+zstyle ':completion:*:*:*:users' ignored-patterns \
+  adm amanda apache avahi beaglidx bin cacti canna clamav daemon \
+  dbus distcache dovecot fax ftp games gdm gkrellmd gopher \
+  hacluster haldaemon halt hsqldb ident junkbust ldap lp mail \
+  mailman mailnull mldonkey mysql nagios \
+  named netdump news nfsnobody nobody nscd ntp nut nx openvpn \
+  operator pcap postfix postgres privoxy pulse pvm quagga radvd \
+  rpc rpcuser rpm shutdown squid sshd sync uucp vcsa xfs '_*'
+#}}}
+
+## Auto-completion for ssh hosts {{{
+zstyle -e ':completion::*:hosts' hosts 'reply=($(cat ~/.ssh/config(N) ~/.ssh/config.d/*(N) | grep "^[Hh]ost" | cut -f2- -d" " | tr " " "\n" | uniq | grep -v "\*" | sort | xargs))'
+zstyle ':completion:*:(scp|rsync):*' tag-order 'hosts:-host:host hosts:-domain:domain hosts:-ipaddr:ip\ address *'
+zstyle ':completion:*:(scp|rsync):*' group-order users files all-files hosts-domain hosts-host hosts-ipaddr
+zstyle ':completion:*:ssh:*' tag-order 'hosts:-host:host hosts:-domain:domain hosts:-ipaddr:ip\ address *'
+zstyle ':completion:*:ssh:*' group-order users hosts-domain hosts-host users hosts-ipaddr
+zstyle ':completion:*:(ssh|scp|rsync):*:hosts-host' ignored-patterns '*(.|:)*' loopback ip6-loopback localhost ip6-localhost broadcasthost
+zstyle ':completion:*:(ssh|scp|rsync):*:hosts-domain' ignored-patterns '<->.<->.<->.<->' '^[-[:alnum:]]##(.[-[:alnum:]]##)##' '*@*'
+zstyle ':completion:*:(ssh|scp|rsync):*:hosts-ipaddr' ignored-patterns '^(<->.<->.<->.<->|(|::)([[:xdigit:].]##:(#c,2))##(|%*))' '127.0.0.<->' '255.255.255.255' '::1' 'fe80::*'
+#}}}
+
+#-----------------------
+# Prompt System
+#-----------------------
+## set prompt variables and load modules {{{
+DISABLE_AUTO_TITLE="true"
+
+autoload -Uz add-zsh-hook
+
+## Prompt functions {{{
+_preexec_timer() {
+    _cmd_timer=$(($(print -P %D{%s%6.})/1000))
+}
+
+_dformat() {
+    local s=(d h m s ms) d=(86400000 3600000 60000 1000 1) r= t=$1 i=0 v=
+    for i in {1..5}; do
+        v=$(( $t / ${d[i]} ))
+        [[ $v -gt 0 ]] && t=$(( $t - ($v * ${d[i]}) )) && r+="$v${s[i]} "
+        [[ -n $r && $2 == "round" ]] && print -P "$r" && return 0
+    done
+    print -P "$r"
+}
+
+_precmd_timer() {
+    psvar[3]=
+    if [ $_cmd_timer ]; then
+        _cmd_timer_now=$(($(print -P %D{%s%6.})/1000))
+        psvar[3]=$(_dformat $(($_cmd_timer_now-$_cmd_timer)) round)
+        unset _cmd_timer
+    fi
+}
+add-zsh-hook preexec _preexec_timer
+add-zsh-hook precmd _precmd_timer
+case $TERM in (*xterm* | rxvt)
+    _prompt_title() {
+        # $1 = type; 0 - both, 1 - tab, 2 - title
+        print -Pn "\033]1;%n@%M\007\033]2;%n@%M %~\007"
+    }
+    add-zsh-hook precmd _prompt_title
+    ;;
+esac
+
+# _set_title() {
+#     local PS1_EMOJI=$'\360\237\215\217'
+#     print -Pn "\e]0;$PS1_EMOJI %~\a"
+# }
+_prompt_vcs() {
+    psvar[1]=$(__git_branch '%s')
+}
+(( ${+commands[git]} )) && add-zsh-hook precmd _prompt_vcs
+# GIT STYLE with branch up or down "%F{red}\uf55c3%F{green}\uf5452%F"
+
+_prompt_venv() {
+    psvar[2]=$(__venv_name '%s')
+}
+add-zsh-hook precmd _prompt_venv
+#}}}
+
+## define prompt variables {{{
+P1=$'%(1V. \(\ue725 %1v\).)'
+P2=$'%(2V.\(\ue73c %2v\) .)'
+#sets ps1
+#PROMPT="%F{cyan}$P2%F{green}%n@%m %F{yellow}%~%F{magenta}$P1"$'\n'"%F{blue}"$'%(!.\uf04e.\uf815)'"%f "
+PROMPT="%F{blue}$P2%F{green}%n@%m %F{yellow}%~%F{magenta}$P1"$'\n'"%F{cyan}"$'%(!.\uf490.\ufb8a)'"%f "
+RPROMPT=$'%(?.%F{green}.%F{red})%3v%(?.%F{green}\uf087.%F{red}\uf188 %?)'
+unset P1 P2
+#}}}
+
+#-------------------------------------
+# Python VirtualEnviroment Auto Setup
+#-------------------------------------
+# If FIND_VIRTUALENV is set, try to load virtualenviroment {{{
+if [[ -z "$VIRTUAL_ENV" ]] && [[ "${FIND_VIRTUALENV}" == "1" ]]; then
+    find_virtualenv
+fi
+#}}}

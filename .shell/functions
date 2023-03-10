@@ -1,0 +1,353 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=bash
+# To the extent possible under law, the author(s) have dedicated all
+# copyright and related and neighboring rights to this software to the
+# public domain worldwide. This software is distributed without any warranty.
+# You should have received a copy of the CC0 Public Domain Dedication along
+# with this software.
+# If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
+
+# base-files version 4.3-2
+# ~/.bash_functions: executed by bash(1) for interactive shells.
+
+# updates the operating system and installed programs, automagically
+# update-all
+update-all() {
+    # ask sudo
+    sudo -v
+
+    #update dotfiles
+    echo "Updating dotfiles..." && dotf pull --all \
+        && echo "dotfiles UPDATED!" || echo "dotfiles update FAILED!"
+
+    # update os dependant
+    if type update-${OS} > /dev/null 2>&1; then
+        echo "Updating $OS .." && \
+            update-${OS} "$@" && \
+            echo "$OS UPDATED!" || \
+            echo "$OS update FAILED!"
+    fi
+
+    #update npm
+    if type npm > /dev/null 2>&1; then
+        npm install --location=global npm@latest
+        npm update --location=global
+        npm cache clean -f
+        echo "NPM Outdated packages:"
+        npm outdated --location=global --depth=0
+    fi
+    #update python
+    if type pip3 python3 > /dev/null 2>&1; then
+        python3 -m pip install --upgrade pip setuptools build
+        echo "PYTHON Outdated packages:"
+        #pip3 list --outdated --format=freeze | grep -v '^\-e' | cut -d= -f1
+        python3 -m pip list -o
+        echo "Use to Update:"
+        echo "$ pip_update "
+    fi
+    # run update from inst
+    [[ -f $HOME/bin/${OS}/inst ]] && $HOME/bin/${OS}/inst dotfiles_update
+}
+
+
+# create a function for autoactivate python virtual enviroments
+#   activate_venv "path_to_script"
+__activate_venv() {
+    source "${1}"
+    PS1="${_OLD_VIRTUAL_PS1:-${PS1}}"
+}
+
+# show virtualenv name
+#   __venv_name "optional format printf"
+__venv_name() {
+    # no venv, just ignore-it
+    [[ -z "$VIRTUAL_ENV" ]] && return
+    local venv_name="${VIRTUAL_ENV##*/}"
+    printf "${1:-%s}" "$venv_name"
+}
+
+# show git branch (used on PS1 variable)
+#   __git_branch "optional format printf"
+__git_branch() {
+    local branch=$(git symbolic-ref --short HEAD 2> /dev/null)
+    [[ -z "$branch" ]] && return
+    printf "${1:-%s}" "$branch"
+}
+
+# reload zsh configuration
+# reload
+reload(){
+    echo "Reloading $SHELL.."
+    for f in $HOME/.zshrc $HOME/.zshenv
+    do
+        [[ -f $f ]] && source $f
+    done
+}
+
+# Change directories and view the contents at the same time
+#   cl directory
+cl() {
+    local DIR="";
+    cd "${1:-$HOME}" && ls
+}
+
+# Added color for termcap apps
+#   color_termcap /path/to/command
+color_termcap() {
+    LESS='--quit-if-one-screen --ignore-case --status-column --LONG-PROMPT --RAW-CONTROL-CHARS --HILITE-UNREAD --tabs=4 --no-init --window=-4' \
+    LESS_TERMCAP_mb=$'\E[1;31m' LESS_TERMCAP_md=$'\E[1;36m'     \
+    LESS_TERMCAP_me=$'\E[0m'    LESS_TERMCAP_so=$'\E[01;44;33m' \
+    LESS_TERMCAP_se=$'\E[0m'    LESS_TERMCAP_us=$'\E[1;32m'    \
+    LESS_TERMCAP_ue=$'\E[0m' \
+    "$@"
+}
+
+# Colored man pages
+#   man command_for_help
+man() { color_termcap /usr/bin/man "$@"; }
+
+# colored less
+# less
+cless() {
+    color_termcap less "$@"
+}
+
+# create directory and go to
+#   mkgo /path/to/dir
+mkgo() { mkdir -p "$1" && cd "$1"; }
+
+
+# fast copy file from one place to another
+#   fastcopy /path/source /path/destination
+fastcopy() {
+    local src="${1}" dest="${2}" from="." dir="${1}"
+    [[ -z "$src" ]] && echo "ERROR: source must be supplied!" && return 4
+    [[ -z "$dest" ]] && echo "ERROR: dest must be supplied!" && return 4
+    # check source
+    [[ ! -f "$src" ]] && [[ ! -d "$src" ]] && \
+        echo "ERROR: source: $from doesnt exists!" && return 4
+    if [[ -f "$src" ]]; then
+        from=$(basename "$src")
+        dir=$(dirname "$src")
+    fi
+    #cd to directory
+    cd "$dir"
+    [[ ! -d "$dest" ]] && mkdir -p "$dest"
+    tar cf - "$from" | pv | ( cd $dest; tar xf - )
+}
+
+# finds something igoring errors
+#   ifind /path/to/dir
+ifind() {
+    local _pth="$1"
+    local _ign="( "
+    _ign+="-path /sys -o -path /proc -o -path /dev -o -path '*/.git/*' "
+    _ign+="-o -path '*/.svn/*' -o -path '*/*.backupdb/*' -o -path '*/._*'"
+    _ign+=" ) -prune -false -o "
+    shift
+    (
+        LC_ALL=C find "$_pth" $_ign "$@" 3>&2 2>&1 1>&3 \
+            | grep -v -e ': Permission denied' \
+                -e ': Operation not permitted' \
+                -e ': Not a directory' >&3;
+    ) 3>&2 2>&1
+}
+
+# Search in current directory
+#   fhere /path/to/dir
+fhere() { ifind . "$@"; }
+
+# Search in current directory for files only
+#   fhere /path/to/dir
+ffhere() { ifind . -type f "$@"; }
+
+#generate a secure random password
+#   genpwd [size]
+genpwd()  {
+    local _pw=$(LC_ALL=C tr -dc A-Za-z0-9_ < /dev/urandom | head -c ${1:-20})
+    printf "%s" "$_pw" | clipboard
+    echo "$_pw"
+}
+
+# Run a process in low priority
+#  low comand [arguments..]
+low() {
+    /usr/bin/nice -n 15 -- "$@"
+}
+
+# Echo the lines of a file preceded by line number
+#   numerize /path/to/file
+numerize() { perl -pe 's/^/$. /' "$@" ; }
+
+#check a sha1b
+#   sha1-check http://host/keyname.key
+sha1-check() {
+    varl=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+
+    if [ "${varl:0:4}" = "http" ]; then
+        #faz download
+        tmpf=$(mktemp)
+        wget "$1" -O "$tmpf" -o /dev/null
+        sha1sum -c "$tmpf"
+    else
+        #compara o sha1
+        sha1sum -c "$1"
+    fi
+}
+
+#runs software detached from terminal
+#   run /path/to/software [arg1] [arg2]
+run() {
+    /usr/bin/nohup "$@" </dev/null &>/dev/null &
+}
+
+#get the mime type of file
+#   mime-get [file]
+mime-get() {
+    /usr/bin/file --mime-type -b "$@"
+}
+
+############################
+# Programming
+############################
+
+# my dot files
+
+#update all things
+ua() {
+    update-all "$@"
+}
+
+# add changes to dotf
+# dotf "commit message"
+dotf-save() {
+    [[ -z "${1}" ]] && echo "You need to pass a commit message!" && dotf status && return 4
+    dotf add -A && dotf commit -m "$*" && dotf push --all
+}
+
+# Translate to PTBR
+#  translate url
+translate() {
+    local args=("$@")
+    local _lang="pt-BR"
+    local _enc=$(urlencode "$1")
+    open "http://translate.google.com/translate?js=n&sl=auto&tl=${_lang}&u=${_enc}"
+}
+
+# Search on duck to go
+#  duckgo
+duckgo() {
+  open "https://lite.duckduckgo.com/lite/?q=$(urlencode "$*")"
+}
+
+# Check if directory is a git dir
+#  is_git_dir
+is_git_dir() {
+    (
+        [[ -n "$1" ]] && cd "$1"
+        [[ -d ".git" ]] && return 0
+        git rev-parse --is-inside-work-tree > /dev/null 2>&1 && return 0 || return 1
+    )
+}
+
+# Open default browser with shell command explained
+#  explain ls -lha
+explain() {
+    local args=()
+    for a in "$@"; do
+        if [[ "$a" == *" "* ]]; then
+            a="'$a'"
+        fi
+        args+=("$a")
+    done
+    local arg="${args[*]}"
+    open "https://explainshell.com/explain?cmd=$arg"
+}
+
+# Shortcut for findind virtualenviroments
+#  find_virtualenv "basedir"
+find_virtualenv() {
+    local _pwd="${1:-${PWD}}"
+    local _vsai= _vsn= _vnn=
+    local _vsa=("/Scripts/activate" "/bin/activate")
+    for _vsn in '' '/.venv' '/venv' '/.virtualenv' '/virtualenv'; do
+        for _vsai in "${_vsa[@]}"; do
+            _vnn="${_pwd/%\//}${_vsn/%\//}${_vsai}"
+            if [[ -f "${_vnn}" ]]; then
+                __activate_venv "${_vnn}"
+                return 0
+            fi
+        done
+    done
+    return 2
+}
+
+# Activates the virtual environment
+#  activate_venv "basedir"
+activate_venv() {
+    if [[ -z "$VIRTUAL_ENV" ]]; then
+        find_virtualenv "$@" || echo "No virtual environment found!"
+    else
+        echo "You already in a virtual environment: ${VIRTUAL_ENV}"
+    fi
+}
+
+#compatibility layer
+# readlink on macs
+readlinkf() {
+    perl -MCwd -le 'print Cwd::abs_path shift' "$1";
+}
+
+# For each line do something
+# eachline file.txt echo \$line
+eachline() {
+    local fname="$1"
+    shift
+    while IFS='' read -r line || [ -n "${line}" ]; do
+        eval "$*"
+    done < "$fname"
+}
+
+# make some math
+# calc 2 * 3
+calc() {
+    bc -l <<< "$@"
+}
+
+#initializes npm directory under .local:
+#   init-node-npm
+init-node-npm() {
+    local nprefix=$(npm config get prefix)
+    mkdir -p $nprefix/{lib/node_modules,bin,share}
+    sudo chown -R $(whoami) $nprefix/{lib/node_modules,bin,share}
+}
+
+#fast go to project
+#   projects [dir]
+projects() {
+    local dir="$1"
+    if [[ -d $P/$dir ]]; then
+        cd $P/$dir
+    else
+        echo "Invalid project directory $dir.."
+    fi
+}
+
+# Open Visual Studio Code At Folder $1
+# vcode [folder]
+vcode() {
+    local projectPath="${1}"
+    [[ ! -n "${projectPath// }" ]] && projectPath="$PWD"
+    vscode "${projectPath/%\//}/"
+}
+
+# building utility
+add_build_path() {
+    d="$1"
+    export LD_LIBRARY_PATH=${LD_LIBRARY_PATH+$LD_LIBRARY_PATH:}${d}/lib
+    export C_INCLUDE_PATH=${C_INCLUDE_PATH+$C_INCLUDE_PATH:}${d}/include
+    export CPLUS_INCLUDE_PATH="${CPLUS_INCLUDE_PATH+$CPLUS_INCLUDE_PATH:}:${d}/include"
+    export CPPFLAGS="${CPPFLAGS+$CPPFLAGS }-I${d}/include"
+    export LDFLAGS="$LDFLAGS -L${d}/lib"
+    export CFLAGS="$CFLAGS -I${d}/include"
+}

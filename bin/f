@@ -1,0 +1,233 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+#bash functions
+source "${BASH_SOURCE%/*}/lib/bashFn.sh"
+source "${BASH_SOURCE%/*}/lib/pgetopt.sh"
+
+#define custom list location
+f_list="$HOME/.config/editor_list.conf"
+#define custom search path
+f_search="$HOME/.config/f_search.conf"
+
+#custom file fast edit
+a_add= a_remove= a_super= a_name= a_list= a_files= a_editor=subl
+
+replace_vars() {
+    local ret="$1"
+    ret="${ret/~\//$HOME\/}"
+    ret="${ret/~+\//$PWD\/}"
+    printf "%s" "$ret" && return 0
+}
+
+
+__main() {
+    if [[ ! -f "$f_list" ]]; then
+        __debug "$f_list doesnt exist.. creating..."
+        fdir=$(dirname "$f_list")
+        mkdir -p "$fdir"
+        touch "$f_list"
+    fi
+    if [[ ! -f "$f_search" ]]; then
+        __debug "$f_search doesnt exist.. creating..."
+        fdir=$(dirname "$f_search")
+        mkdir -p "$fdir"
+        touch "$f_search"
+    fi
+    if [[ "$a_add" == "y" ]]; then
+        __debug "Adding file Shortcut: $a_name"
+        grep -qF -- "${a_name}:" "$f_list"
+        if [[ "$?" -ne 0 ]]; then
+            local fnames=$( __to_sep "${a_files[@]}" )
+            __debug "Converted Files: $fnames"
+            echo "$a_name:$a_super:${fnames}" >> "$f_list"
+            echo "Command ${a_name} sucessfully added!"
+            return 0
+        else
+            echo "Command ${a_name} already exists!"
+            return 1
+        fi
+    elif [[ "$a_remove" == "y" ]]; then
+        __debug "Removing ${a_name} .."
+        #remove
+        sed -i "/$a_name:/d" $f_list
+        echo "Command ${a_name} sucessfully removed!"
+        return 0
+    elif [[ "$a_list" == "y" ]]; then
+        echo "Listing Files Shortcuts:"
+        while read line; do
+            name=$(echo "$line" | cut -d":" -f1)
+            if [[ -n "$a_name" ]]; then
+                if [[ ! "$name" == *"$a_name"* ]]; then
+                    continue
+                fi
+            fi
+            super_t="No "
+            super=$(echo "$line" | cut -d":" -f2)
+            if [[ "$super" == "root" ]]; then
+                super_t="Yes"
+            fi
+            files=$(echo "$line" | cut -d":" -f3 | sed  "s|$HOME/|~/|g" | sed 's|,|, |g')
+            echo "Name: $name 	Super: $super_t Files: $files"
+        done < "$f_list"
+    else
+        #run command
+        local cmd=()
+        __debug "Running ${a_name} .."
+        result=$(grep -F "${a_name}:" $f_list)
+        if [[ "${result// }" == "" ]]; then
+            echo "Using Search Path for finding File: "
+            cmdFind=$(__findCommand "${a_name}")
+            #try to find in paths
+            if [[ "$?" -eq 0 ]]; then
+                echo "File found: $cmdFind!"
+                cmd=("$cmdFind")
+            else
+                echo "File not found! ${a_name}.."
+                echo "  see how to add using --help"
+                return 1
+            fi
+        else
+            local name=$(echo "$result" | cut -d":" -f1 )
+            local super=$(echo "$result" | cut -d":" -f2 )
+            local cmd_line=$(echo "$result" | cut -d":" -f3 )
+            IFS=',' read -ra cmd <<< "$cmd_line"
+        fi
+        #if has command to run
+        if [[ "${#cmd[@]}" -gt 0 ]]; then
+            local cmd_parsed=()
+            echo "Opening.."
+            for c in "${cmd[@]}"; do
+                local rt=$(replace_vars "$c")
+                cmd_parsed+=("$rt")
+            done
+            if [[ "$super" == "root" ]] || [[ "$a_super" == "root" ]] ; then
+                sudo $a_editor "${cmd_parsed[@]}"
+            else
+                $a_editor "${cmd_parsed[@]}"
+            fi
+        fi
+    fi
+}
+
+__findCommand() {
+    local _f="$1"
+    #search paths for file
+    while IFS='' read -r path || [[ -n "${path// }" ]]; do
+        local _path=$(__envSubst "$path")
+        local newpath="${_path/%\//}/${_f}"
+        if [[ -z "${path// }" ]]; then continue; fi
+        if [[ -f "${newpath}" ]]; then
+            echo "$newpath"
+            return 0
+        fi
+    done < <(sed -Ee "s/^[[:space:]]+//g" \
+            -e '/^([;#]|\/\/)/d' -e '/^[[:space:]]*$/d' "$f_search")
+    return 1
+}
+
+
+### Parsing data
+__parse() {
+    OPTIONS=arlsn:c:e:hv
+    LONGOPTIONS=add,remove,list,super,name:,config:,editor:,help,debug
+
+    local argv=$(pgetopt -o $OPTIONS -l $LONGOPTIONS -n "$0" -- "$@")
+    [[ $? -ne 0 ]] && exit 2
+    eval set -- "$argv"
+    # Debug arguments
+    __debug "" "Parsed Getopts: $*"
+    # now enjoy the options in order and nicely split until we see --
+    while true; do
+        case "$1" in
+            -a|--add)
+                a_add=y; shift;;
+            -r|--remove)
+                a_remove=y; shift;;
+            -n|--name)
+                a_name="$2"; shift 2;;
+            -e|--editor)
+                a_editor="$2"; shift 2;;
+            -l|--list)
+                a_list=y; shift;;
+            -s|--super)
+                a_super=root; shift;;
+            -c|--config)
+                f_list="$2"; shift 2;;
+            -v|--debug)
+                _DEBUG=y; shift;;
+            --)
+                shift; a_files=( "$@" ); break;;
+            h  ) __usage;;
+            \? ) echo "Unknown option: -$OPTARG" >&2; __usage;;
+            :  ) echo "Missing option argument for -$OPTARG" >&2; __usage;;
+            *  ) echo "Unimplemented option: -$OPTARG" >&2; __usage;;
+        esac
+    done
+
+    #validates the rest
+    if [[ "$a_add" == "y" ]] || [[ "$a_remove" == "y" ]]; then
+        if [[ -z "$a_name" ]]; then
+            if [[ "${#a_files}" -lt 1 ]]; then
+                echo "You must provide a shortcut name -n [name]"
+                __usage
+            else
+                a_name="${a_files[0]}"
+                a_files="${a_files[@]:1}"
+            fi
+        fi
+        if [[ "$a_add" == "y" ]] && [[ "${#a_files}" -eq 0 ]]; then
+            echo "You must provide at least one file to add/remove"
+            __usage
+        fi
+    elif [[ "$a_list" == "y" ]]; then
+        if [[ "${#a_files}" -ne 0 ]]; then
+            a_name="${a_files[0]}"
+            a_files="${a_files[@]:1}"
+        fi
+    else
+        if [[ -z "$a_name" ]]; then
+            if [[ "${#a_files}" -eq 0 ]]; then
+                echo "You must provide a shortcut name -n [name]"
+                __usage
+            else
+                a_name="${a_files[0]}"
+                a_files="${a_files[@]:1}"
+            fi
+        fi
+    fi
+}
+
+__usage() {
+    cat <<HELP_USAGE
+    $0
+        [-a] [-r] [-s] [-c <config>] [-n name] [name] file1 [file2] ...
+
+    -a|--add 		create a new files shortcut
+    -r|--remove 	removes a file shortcut
+    -n|--name 		name of shortucut to add/remove/run
+    -s|--super 		runs as superuser
+    -c|--config 	specifies the config files
+    [name]			if no name specified with -n, first argument to run will be the name
+    file1			file name. only needed for add
+HELP_USAGE
+    exit 4
+}
+
+if [[ -n "$_DEBUG" ]]; then echo "Parsing command line arguments.."; fi
+
+__parse "$@"
+
+__debug "Command Line Arguments: "
+__debug "   a_add: $a_add"
+__debug "a_remove: $a_remove"
+__debug " a_super: $a_super"
+__debug "  a_name: $a_name"
+__debug " a_files: ${a_files[@]}"
+__debug ""
+
+
+__debug "Running main code: "
+
+__main
+exit $?

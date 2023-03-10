@@ -1,0 +1,17 @@
+{
+	"bootstrapped": true,
+	"in_process_packages":
+	[
+	],
+	"installed_packages":
+	[
+		"Dockerfile Syntax Highlighting",
+		"Emacs-like Modelines",
+		"INI",
+		"MarkdownEditing",
+		"MarkdownPreview",
+		"Package Control",
+		"Theme - Gravity",
+		"VimL",
+	],
+}

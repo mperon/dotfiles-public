@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+user_id=$(id -u)
+user_group=$(id -g)
+
+usage() {
+    [[ -n "$1" ]] && echo "$1"
+    echo "Usage:"
+    echo "$ mount-ntfs device volume"
+    exit 4
+}
+
+if [[ -z "$1" ]]; then
+    # list all ntfs disks
+    echo "Listing NTFS Drives:"
+    for disk in $(diskutil list | grep -F /dev/disk | \
+        grep -Ev "(disk image|synthesized|internal)"); do
+        diskutil list $disk | sed 's/ \{2,\}/:/g' | awk -F: '/_NTFS/{printf "/dev/%s\t\t%s\t\t%s\n",$6,$4,$5;}'
+    done
+    exit 0
+fi
+if [[ ! "$1" = "/dev/disk"* ]]; then
+    usage "Mount only in from /dev/disk*"
+fi
+if [[ ! "$2" = "/Volumes/"* ]]; then
+    usage "Mount only in volumes"
+fi
+[[ ! -d "$2" ]] && sudo mkdir -p "$2"
+
+#montar windows
+sudo mount -t ntfs \
+    -o rw,auto,nobrowse \
+    "$@"
+
+#    -o defaults,windows_names,locale=en_US.utf8,umask=0002,gid=${user_id},uid=${user_group},rw,nobrowse \
+
+# Diskutil list
+# Sudo mkdir /Volumes/disk2s1
+# Sudo mount -t ntfs -o rw,auto,nobrowse /dev/disk2s1 /Volumes/disk2s1

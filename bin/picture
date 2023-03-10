@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+# import functions
+source "${BASH_SOURCE%/*}/lib/bashFn.sh"
+
+PROGRAMS=(convert)
+
+__listRequiredPrograms() {
+    __print "Required Programs To Run: "
+    for prog in "${PROGRAMS[@]}"; do
+        __print "  ${prog}"
+    done
+    __print "To install run $0 --install"
+    __print "Thats All!"
+}
+
+__install_required() {
+    local ainst="sudo apt-get -qq -y -f -m install"
+    $ainst convert
+    return 0
+}
+
+__help_all() {
+    cat <<EndOfText
+Usage: picture ACTION [action_options]
+Utility to work easily with Video files.
+Example: picture to_pdf input.png
+
+For help of each action options, please call:
+    >> picture action --help
+
+Avaliable modifiers:
+  -h, --help     Help text
+
+Avaliable actions:
+EndOfText
+    __list_actions
+
+}
+
+__help_read_fn() {
+    local help_of="$1"
+    help_desc= help_usage= help_example=
+    while IFS='' read -r line || [[ -n "${line// }" ]]; do
+        [[ "${line:0:1}" == "}" ]] && break
+        if [[ "${line:0:6}" == "#:desc" ]]; then
+            help_desc="${line:7}"
+        elif [[ "${line:0:7}" == "#:usage" ]]; then
+            help_usage="${line:8}"
+        fi
+    done < <(cat $0 | grep -A 5 "^__action_${help_of}(" | sed -e "s/^[[:space:]]\+//g")
+}
+
+__help_action() {
+    local help_of="$1"
+    __help_read_fn "$help_of"
+    echo "Utility to work easily with PICTURE files."
+    echo ""
+    echo "Action: ${help_of} - ${help_desc}"
+    [[ -n "${help_usage// }" ]] && echo "Usage: ${help_usage}"
+}
+
+__list_actions() {
+    while IFS='' read -r line || [[ -n "${line// }" ]]; do
+        echo "   - $line"
+    done < <(cat $0 | grep -Eo "^__action_([a-zA-Z0-9_-]+)" | sed 's/^__action_//')
+}
+
+__action_ls() {
+    #:desc List all avaliable actions
+    #:usage pdf ls
+    __action_list "$@"
+}
+
+__action_list() {
+    #:desc List all avaliable actions
+    #:usage pdf list
+    echo "Commands Avaliable:"
+    __list_actions
+}
+
+#reduce size of video
+__action_to_pdf() {
+    #:desc Convert picture to PDF
+    #:usage picture to_pdf input.png [output]
+    local input="${1}"
+    local output="${2}"
+
+    local i_ext="${input##*.}"
+    local i_name="${input%.*}"
+
+    [[ ! -n "${input// }" ]] && __help_action "to_pdf" && return 4
+    [[ ! -n "${output// }" ]] && output="${i_name}.pdf"
+
+    /usr/bin/convert "$input" -background white \
+            -page a4 "${output}"
+}
+
+__action_to_jpg() {
+    #:desc Convert PDF to JPG
+    #:usage picture to_jpg input.pdf [density] [output]
+    local input="${1}"
+    local output="${3}"
+    local density="${2:-300}"
+
+    local i_ext="${input##*.}"
+    local i_name="${input%.*}"
+
+    [[ ! -n "${input// }" ]] && __help_action "to_jpg" && return 4
+    [[ ! -n "${output// }" ]] && output="${i_name}.jpg"
+
+    convert -density "${density}" "$input" "$output"
+
+}
+
+__action_rm_background() {
+    #:desc Remove background of picture
+    #:usage picture rem_background input.png [output] [contrast] [fuzz]
+    local input="${1}"
+    local output="${2}"
+    local contrast="${3:-15x10}"
+    local fuzz="${4:-25}"
+
+    local i_ext="${input##*.}"
+    local i_name="${input%.*}"
+
+    local tmpf=$(mktemp)
+
+    [[ ! -n "${input// }" ]] && __help_action "rem_background" && return 4
+    [[ ! -n "${output// }" ]] && output="${i_name}.png"
+
+    convert "$input" "${tmpf}.png"
+    convert "${tmpf}.png" -fuzz "${fuzz}%" -transparent white  -brightness-contrast -"${contrast}" "$output"
+    rm -f "${tmpf}.png"
+    return $?
+}
+
+__main() {
+    local ACTION=$1
+    shift
+
+    if [[ -z "${ACTION// }" ]]; then
+        __help_all
+        return 4
+    fi
+
+    if [[ "$ACTION" == "-h" || "$ACTION" == "--help" ]]; then
+        __help_all; return 4
+    elif [[ "$1" == "-h" || "$1" == "--help" ]]; then
+        __action_help "$@"; return 4
+    fi
+
+    if function_exists "__action_${ACTION}"; then
+        "__action_${ACTION}" "$@"
+        return $?
+    else
+        echo "Function $arg doesnt exists!"
+        return 4
+    fi
+}
+
+__main "$@"

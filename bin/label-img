@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+# import functions
+source "${BASH_SOURCE%/*}/lib/bashFn.sh"
+
+in="$1"
+out="$2"
+
+type="${3:-basic}"
+
+[[ ! -d "$out" ]] && mkdir -p "$out"
+
+for f in "$in"/*.jpg; do
+
+    fFullName=$(basename -- "$f")
+    fExt="${fFullName##*.}"
+    fName="${fFullName%.*}"
+
+    convert "$f" -resize 1024x768 "$out/$f"
+
+    imgWidth=$(identify -format "%w" "$out/$f")> /dev/null
+    imgHeight=$(identify -format "%h" "$out/$f")> /dev/null
+
+    fTrim=$(__trim "$fName")
+
+
+    IFS='-' read -r -a imgParts <<< "$fName"
+    for part in "${imgParts[@]}"; do
+        partText=$(__trim "$part")
+        if [[ "$type" == "basic" ]]; then
+
+            convert "$out/$f" -background White -pointsize 40 label:"$partText" \
+                -gravity Center -append "$out/$f"
+        else
+            convert "$out/$f"  \( -size "${imgWidth}x" \
+                 -background white -fill black -pointsize 32 \
+                 caption:"$partText" \
+                 -bordercolor white -border 0x20 \) \
+                -gravity Center -append "$out/$f"
+
+        fi
+    done
+done
+
+
+

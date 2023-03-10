@@ -1,0 +1,1238 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+_SOURCES=("${BASH_SOURCE}")
+
+source "${BASH_SOURCE%/*}/../lib/inst.core.sh"
+source "${BASH_SOURCE%/*}/../lib/inst.linux.sh"
+
+########################################
+#    INSTALLER functions               #
+########################################
+inst_chrome() { #desktop
+    command_exists "google-chrome-stable" "chromium-browser" && return 0
+
+    if [[ $ARCH == "arm64" ]]; then
+        #only chromium
+        repo_inst chromium-browser
+        return 0
+    fi
+    #chrome
+    repo_key https://dl.google.com/linux/linux_signing_key.pub && \
+    repo_manualadd google-chrome "deb [arch=$ARCH] http://dl.google.com/linux/chrome/deb/ stable main" || return 4
+    repo_upd
+    repo_inst google-chrome-stable
+}
+
+inst_java() { #core:manual
+    local _ver=19
+    #checks if java is already installed
+    # if command_exists "javac"; then
+    #     local javaC=$(readlinkf $(readlinkf $(command -v javac)))
+    #     [[ "$javaC" =~ \/java\-([0-9]*)\-oracle\/ ]] && \
+    #         [[ "${BASH_REMATCH[1]}" -ge 10 ]] && \
+    #         return 0
+    # fi
+    #complete remove java
+    repo_purge default-jdk default-jdk-doc default-jdk-headless default-jre default-jre-headless
+    for _v in {8..20}; do
+        repo_purge openjdk-${_v}-dbg openjdk-${_v}-doc openjdk-${_v}-jdk \
+            openjdk-${_v}-jdk-headless openjdk-${_v}-demo openjdk-${_v}-jre-zero openjdk-${_v}-jre \
+            openjdk-${_v}-jre-headless openjdk-${_v}-source icedtea-${_v}-plugin \
+            oracle-java${_v}-installer oracle-java${_v}-set-default
+    done
+    sudo rm /var/lib/binfmts/jar
+    sudo rm -f /etc/profile.d/jdk*.sh
+    sudo rm -f /etc/profile.d/jre*.sh
+    sudo apt-get update
+    apt-cache search java | awk '{print($1)}' | grep -E -e '^(ia32-)?(sun|oracle)-java' -e '^openjdk-' -e '^icedtea' -e '^(default|gcj)-j(re|dk)' -e '^gcj-(.*)-j(re|dk)' -e 'java-common' | xargs sudo apt-get -y remove
+    sudo apt-get -y autoremove
+    dpkg -l | grep ^rc | awk '{print($2)}' | xargs sudo apt-get -y purge
+    sudo bash -c 'ls -d /home/*/.java' | xargs sudo rm -rf
+    #install java version
+    inst_java_temurin $_ver
+    sudo update-ca-certificates -f
+    inst_javafx_sdk $_ver
+}
+
+inst_java_temurin() { #auto:inst_java
+    local _version=${1:-19}
+    repo_key_trusted "java-temurin" "https://packages.adoptium.net/artifactory/api/gpg/key/public"
+    repo_manualadd "java-temurin" "deb [arch=$ARCH] https://packages.adoptium.net/artifactory/deb $VERSION_CODENAME main"
+    repo_upd
+    repo_inst temurin-${_version}-jdk
+}
+
+inst_javafx_sdk() { #auto:java
+    local _version=${1:-19}
+    iprint "javafx" "[javafx] Installing ..."
+    local _fname="openjfx-${_version}_linux-${ARCH}_bin-sdk.zip"
+    local _from="https://download2.gluonhq.com/openjfx/${_version}/${_fname}"
+    local _dest="/opt/javafx-sdk-${_version}"
+    local ret=0
+
+    #first check if has any version installed
+    libpath=$(find "/opt" -maxdepth 1 -type d -name 'javafx-sdk-*' 2>/dev/null | head -n1)
+    [[ -n "${libpath// }" ]] && istatus 0  && echo "JavaFX already installed: ${libpath} !" && return 0
+
+    #downloads the package to temp directory
+    local _tmpd=$(mktemp -d)
+    if wget --no-check-certificate -O "${_tmpd}/${_fname}" "$_from"; then
+        _destname=$(zipinfo -1 "${_tmpd}/${_fname}"  | head -n1)
+        unzip "${_tmpd}/${_fname}" -d "/opt"
+
+        local qtd=$(__countFilesSilent "/opt/${_destname/%\//}/")
+        #try to save javafx enviroment variable
+        mkdir -p $HOME/.config/profile.d/
+        [[ "$qtd" -gt 10 ]] && [[ ! -f $HOME/.config/profile.d/999-javafx.sh ]] && \
+                printf "%s=%s" "JAVA_FX_PATH" "$_dest" > $HOME/.config/profile.d/999-javafx.sh \
+                && chmod +x $HOME/.config/profile.d/999-javafx.sh
+        [[ "$qtd" -gt 10 ]] && iok || ifail
+    else
+        ifail
+        echo "Cannot download JavaFX from $_from!"
+    fi
+    rm -rf "$_tmpd"
+}
+
+inst_git() { #core
+    repo_add ppa:git-core/ppa || return 4
+    repo_upd
+    repo_inst git git-core git-doc git-man
+    config_git
+}
+
+config_git() { #auto:inst_git
+    local gitf=$HOME/.config/gitconfig
+    if [[ -f "$gitf" ]]; then
+        if ! git config --list | grep -F "include.path=~/.config/gitconfig" > /dev/null 2>&1; then
+            #back up current git file
+            [[ -f "$HOME/.gitconfig" ]] && mv "$HOME/.gitconfig" "$HOME/.gitconfig_old"
+            #copy from sample
+            if [[ -f "$HOME/.gitconfig_sample"  ]]; then
+                cp "$HOME/.gitconfig_sample" "$HOME/.gitconfig"
+            else
+                cat << EndOfConfig > $HOME/.gitconfig
+[include]
+    path = ~/.config/gitconfig
+#[user]
+#    signingkey = "ssh-rsa <publickey>"
+#[commit]
+#    gpgsign = true
+#[gpg]
+#    format = ssh
+EndOfConfig
+            fi
+        fi
+    fi
+    # check if has signature and config
+    if [[ $HOME/.ssh/id_ed25519.pub ]]; then
+        git config --global user.signingkey "$(tr '\n' ' ' < $HOME/.ssh/id_ed25519.pub)"
+        git config --global commit.gpgsign true
+        git config --global gpg.format ssh
+        echo "Configuring git signingkey using id_ed25519. Done!"
+    elif [[ -f $HOME/.ssh/id_rsa.pub ]]; then
+        git config --global user.signingkey "$(tr '\n' ' ' < $HOME/.ssh/id_rsa.pub)"
+        git config --global commit.gpgsign true
+        git config --global gpg.format ssh
+        echo "Configuring git signingkey using id_rsa. Done!"
+    else
+        echo "[Failed] Git signingkey not found"
+        echo "You will need to configure manually! "
+    fi
+
+    echo "Configuring git options.."
+    if ! git config user.name >&- 2>&-; then
+        if __ask "Informe seu nome:"; then
+            git config --global user.name "$E_ANSWER"
+        fi
+    fi
+    if ! git config user.email >&- 2>&-; then
+        if __ask "Informe seu e-mail:"; then
+            git config --global user.email "$E_ANSWER"
+        fi
+    fi
+}   
+
+inst_cloudru() { #desktop:manual
+    #NEED FIX
+    echo "Need Fix"
+#    repo_key https://linuxdesktopcloud.mail.ru/mail.ru-cloud.gpg && \
+#    repo_manualadd "mail.ru-cloud" "deb https://linuxdesktopcloud.mail.ru/deb default free" || return 4
+#    repo_upd
+#    repo_inst mail.ru-cloud
+}
+
+inst_essential() { #core
+    repo_inst apt-transport-https
+    repo_inst pv
+    repo_inst arj
+    repo_inst cabextract
+    repo_inst faac
+    repo_inst faad
+    repo_inst ffmpeg
+    repo_inst ffmpeg2theora
+    repo_inst file-roller
+    repo_inst flac
+    repo_inst icedax
+    repo_inst id3v2
+    repo_inst lame
+    repo_inst lhasa
+    repo_inst liba52-dev
+    repo_inst libavcodec-extra
+    repo_inst libavcodec-extra57
+    repo_inst libavformat57
+    repo_inst libavutil55
+    repo_inst libflac++6v5
+    repo_inst libjpeg-progs
+    repo_inst libmad0
+    repo_inst libmpeg2-4
+    repo_inst libmpeg3-2
+    repo_inst libde265-0
+    repo_inst libpostproc54
+    repo_inst libswscale4
+    repo_inst libxine2 libxine2-ffmpeg
+    repo_inst mencoder
+    repo_inst mjpegtools
+    repo_inst mp3gain
+    repo_inst mpack
+    repo_inst mpeg2dec
+    repo_inst mpeg3-utils
+    repo_inst mpegdemux
+    repo_inst mpg123
+    repo_inst mpg321
+    repo_inst p7zip
+    repo_inst p7zip-full
+    repo_inst p7zip-rar
+    repo_inst rar
+    repo_inst regionset
+    repo_inst sharutils
+    repo_inst sox
+    repo_inst ubuntu-restricted-extras
+    repo_inst unace
+    repo_inst unace-nonfree
+    repo_inst unrar
+    repo_inst unzip
+    repo_inst uudeview
+    repo_inst vorbis-tools
+    repo_inst x264
+    repo_inst zip
+    repo_inst xsel xclip
+    repo_inst xz-utils
+    repo_inst libappindicator1
+    repo_inst cups-pdf
+    repo_inst gir1.2-appindicator3-0.1
+    repo_inst htop
+    repo_inst trash-cli
+    repo_inst resolvconf
+    repo_inst exfat-fuse exfat-utils
+    repo_inst debconf-utils
+    repo_inst sshfs cifs-utils
+    repo_inst aria2c axel
+    repo_inst gnupg ca-certificates
+    repo_inst net-tools curl corkscrew
+    repo_inst dos2unix bat
+    inst_basictools
+    inst_dvd_pkgs
+}
+
+inst_dvd_pkgs() { #core:auto
+    cat <<EndOfConfig | sudo debconf-set-selections
+libdvd-pkg  libdvd-pkg/build    boolean true
+libdvd-pkg  libdvd-pkg/upgrade  note
+libdvd-pkg  libdvd-pkg/post-invoke_hook-remove  boolean false
+libdvd-pkg  libdvd-pkg/post-invoke_hook-install boolean true
+libdvd-pkg  libdvd-pkg/first-install    note
+EndOfConfig
+#    repo_inst libdvdread4 #FIX
+    repo_inst libdvdnav4
+    repo_inst libdvdcss2
+    repo_inst libdvdread4
+    repo_inst libdvd-pkg #FIX#
+}
+
+
+inst_zsh() { #core
+    repo_inst zsh
+}
+
+inst_teamviewer() { #desktop:manual
+    #install teamviewer
+    repo_inst_manual teamviewer "https://download.teamviewer.com/download/linux/teamviewer_amd64.deb"
+}
+
+inst_software() { #desktop
+    #install pulseaudio
+    repo_inst pulseaudio
+    repo_inst gnome-system-monitor
+}
+
+inst_security() { #desktop,server
+    #firewall
+    inst_firewall
+    inst_config_firewall
+    repo_inst gufw
+}
+
+inst_firewall() { #core
+    repo_inst ufw || return 4
+    sudo ufw enable
+    sudo ufw default deny incoming
+    sudo ufw default allow outgoing
+    sudo ufw allow ssh
+
+    # enable netfilter
+    echo 1 | sudo tee /proc/sys/net/netfilter/nf_conntrack_helper
+    # protect syn_flood
+    echo "net.ipv4.tcp_syncookies = 1" | sudo tee -a /etc/sysctl.conf
+}
+
+inst_config_firewall() { #auto:inst_security
+    #nf_conntrack_netbios_ns
+    if [[ ! -f "/etc/ufw/applications.d/samba4" ]]; then
+    cat <<EndOfConfig  | sudo tee /etc/ufw/applications.d/samba4 > /dev/null 2>&1
+[samba4]
+title=Samba 4
+description=Samba 4 as domain controller
+ports=53|88|135/tcp|137/udp|138/udp|139/tcp|389|445/tcp|464|636/tcp|1024:5000/tcp|3268/tcp|3269/tcp|5353
+EndOfConfig
+    fi
+    #sudo ufw allow samba
+    #sudo ufw allow from 192.168.192.0/24 to any app samba4
+}
+
+
+inst_config_ufw_server() { #server
+    local _network="172.21.85.0/24"
+    #nf_conntrack_netbios_ns
+    if [[ ! -f "/etc/ufw/applications.d/samba4" ]]; then
+    cat <<EndOfConfig  | sudo tee /etc/ufw/applications.d/samba4 > /dev/null 2>&1
+[samba4]
+title=Samba 4
+description=Samba 4 as domain controller
+ports=53|88|135/tcp|137/udp|138/udp|139/tcp|389|445/tcp|464|636/tcp|1024:5000/tcp|3268/tcp|3269/tcp|5353
+EndOfConfig
+    fi
+    #ssh
+    sudo ufw allow ssh
+    #rsync
+    sudo ufw allow 873
+    #ftp
+    sudo ufw allow ftp
+    #samba
+    sudo ufw allow samba
+    sudo ufw allow samba4
+
+}
+
+inst_multimedia() { #desktop
+#   repo_inst deluge
+#   repo_inst bleachbit
+    repo_inst gthumb
+    repo_inst trimage
+    repo_inst conky-all
+
+    inst_wine
+
+    repo_inst pipelight-multi && \
+        sudo pipelight-plugin –enable silverlight
+#        repo_inst wine-compholio ttf-mscorefonts-installer netflix-desktop
+
+    repo_inst vlc browser-plugin-vlc libavcodec-extra-53
+    repo_inst kazam
+    #install plugins
+    repo_inst gstreamer1.0-alsa gstreamer1.0-plugins-good gstreamer1.0-pulseaudio gstreamer1.0-opencv
+    repo_inst gstreamer1.0-plugins-ugly gstreamer1.0-plugins-bad
+    #app run faster
+    #repo_inst preload
+}
+
+inst_disks() { #desktop
+    repo_inst gparted
+}
+
+inst_calendar() { #desktop
+    if [[ ! -f "$HOME/.local/share/applications/google-calendar.desktop" ]]; then
+        cat <<EndOfConfig | tee "$HOME/.local/share/applications/google-calendar.desktop" > /dev/null 2>&1
+#!/usr/bin/env xdg-open
+[Desktop Entry]
+Version=1.0
+Type=Application
+Terminal=false
+Icon[en_US]=calendar
+Exec=xdg-open https://www.google.com/calendar
+Name[en_US]=Google Calendar
+Name=Google Calendar
+Icon=calendar
+EndOfConfig
+    fi
+    gio mime text/calendar google-calendar.desktop
+}
+
+inst_wine() { #auto:inst_multimedia,fix
+    repo_key https://dl.winehq.org/wine-builds/Release.key && \
+        repo_keyserver keyserver.ubuntu.com 76F1A20FF987672F && \
+        repo_add "https://dl.winehq.org/wine-builds/ubuntu/" || return 4
+    repo_upd
+    repo_remove wine1.8 wine-stable 'libwine*' 'fonts-wine*'
+    repo_autoremove
+    repo_inst wine-devel
+    repo_inst winetricks playonlinux
+}
+
+inst_mono() { #desktop:manual,#programming:manual
+    repo_inst gnupg ca-certificates
+    sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 3FA7E0328081BFF6A14DA29AA6A19B38D3D831EF
+    echo "deb https://download.mono-project.com/repo/ubuntu stable-bionic main" | sudo tee /etc/apt/sources.list.d/mono-official-stable.list
+    sudo apt update
+    repo_inst mono-devel mono-complete mono-dbg
+    repo_inst ca-certificates-mono mono-xsp4
+    repo_inst referenceassemblies-pcl
+}
+
+inst_wine_extras() { #desktop:manual
+    local wt="/usr/bin/winetricks"
+    export WINEARCH=win32
+    export WINEPREFIX=~/.wine32
+
+    #init prefix
+    wine winecfg
+
+    #remove mono to install .NET
+    wine uninstaller --remove '{E45D8920-A758-4088-B6C6-31DBB276992E}'
+
+    #install dotnet4
+    $wt --unattended dotnet40 corefonts
+    #install other basic libraries
+    $wt --unattended 7zip cmd comctl32ocx comctl32 comdlg32ocx d3dx10 \
+        d3dx9 mfc40 mfc42 msls31 msxml3 msxml4 msxml6 ole32 \
+        riched20 riched30 richtx32 vb2run vb3run vb4run vb5run vb6run \
+        vcrun2003 vcrun2005 vcrun2008 vcrun2010
+}
+
+inst_spotify() { #desktop:auto
+    sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 931FF8E79F0876134EDDBDCCA87FF9DF48BF1C90
+    echo deb http://repository.spotify.com stable non-free | sudo tee /etc/apt/sources.list.d/spotify.list
+    sudo apt-get update
+    sudo apt-get install spotify-client
+}
+
+inst_google_earth() { #desktop:manual
+    #repo_inst msttcorefonts
+    repo_inst_manual google_earth \
+        "http://dl.google.com/dl/earth/client/current/google-earth-stable_current_${ARCH}.deb"
+}
+
+
+inst_graphics() { #desktop
+    #repo_add ppa:ubuntuhandbook1/audacity
+    repo_inst k3b
+    repo_inst audacity
+    #inst_variety_wallpapper
+    inst_gimp
+    inst_inkscape
+}
+
+inst_video() { #auto:inst_graphics
+    inst kdenlive
+}
+
+inst_variety_wallpaper() { #auto:inst_graphics
+     repo_add ppa:peterlevi/ppa
+     repo_upd
+     repo_inst variety
+}
+
+inst_gimp() { #auto:inst_graphics
+    repo_add ppa:otto-kesselgulasch/gimp || return 4
+    repo_inst gimp gimp-gmic gmic
+    repo_inst gimp-data
+    repo_inst gimp-plugin-registry
+    repo_inst gimp-data-extras
+    repo_inst gimp-resynthesizer
+}
+
+inst_openshot() { #auto:inst_graphics
+    repo_add ppa:openshot.developers/ppa || return 4
+    repo_inst openshot
+}
+
+inst_inkscape() { #auto:inst_graphics
+    repo_add ppa:inkscape.dev/stable || return 4
+    repo_inst inkscape
+}
+
+inst_homecenter() { #desktop:manual
+    repo_inst xbmc
+}
+
+inst_foxit_reader() { #desktop
+    local tmpd=$(mktemp -d)
+    if [[ ! -f "$tmpd/FoxitReader.run.tar.gz" ]]; then
+        wget -O "$tmpd/FoxitReader.run.tar.gz" "http://cdn01.foxitsoftware.com/pub/foxit/reader/desktop/linux/2.x/2.4/en_us/FoxitReader.enu.setup.2.4.4.0911.x64.run.tar.gz"
+    fi
+    runner=$(find "$tmpd/" -type f -name *.run | head -n 1)
+    if [[ -z "${runner// }" ]]; then
+        tar -zxvf "$tmpd/FoxitReader.run.tar.gz" -C "$tmpd"
+        runner=$(find "$tmpd" -type f -name *.run | head -n 1)
+    fi
+    if [[ ! -z "${runner// }" ]]; then
+        echo "$runner"
+        sudo $runner
+        rm -rf "$tmpd"
+    fi
+    mkdir -p ~/.local/share/icons/hicolor/64x64/apps
+    cp /usr/share/icons/hicolor/64x64/apps/FoxitReader.png ~/.local/share/icons/hicolor/64x64/apps
+}
+
+inst_tweak() { #desktop
+    repo_inst synaptic
+    repo_inst dconf-tools
+    repo_inst gconf-editor
+    repo_inst gnome-tweak-tool
+    repo_inst --no-install-recommends gnome-panel
+#   fix_login
+}
+
+inst_tools() { #desktop,server
+    repo_inst foremost #restore deleted files
+}
+
+inst_fingerprint() { #desktop:manual
+    if [[ "$1" == "--remove" ]]; then
+        repo_inst policykit-1-gnome
+        repo_purge fingerprint-gui
+    fi
+    repo_add ppa:fingerprint/fingerprint-gui
+    repo_inst libbsapi policykit-1-fingerprint-gui fingerprint-gui
+}
+
+inst_x32() {  #desktop:manual
+    sudo dpkg --add-architecture i386
+    repo_inst libc6:i386 libncurses5:i386 libstdc++6:i386
+}
+
+fix_login() { #desktop:manual
+    repo_inst gnome-session
+    sudo dpkg-reconfigure gdm3
+#    [[ -L "/etc/alternatives/gdm3.css" ]] && sudo unlink /etc/alternatives/gdm3.css
+#    sudo ln -s  /usr/share/gnome-shell/theme/ubuntu.css /etc/alternatives/gdm3.css
+    echo "Choose 3) ubuntu.css"
+    sudo update-alternatives --config gdm3.css
+    #to restore communitheme:
+    #[[ -L "/etc/alternatives/gdm3.css" ]] && sudo unlink /etc/alternatives/gdm3.css
+    #sudo ln -s  /usr/share/gnome-shell/theme/communitheme/gnome-shell.css /etc/alternatives/gdm3.css
+}
+
+fix_audio() { #desktop:manual
+    killall pulseaudio; rm -rf ~/.config/pulse/*; rm -rf ~/.pulse/*
+    repo_purge alsa-base pulseaudio pavucontrol
+    repo_inst alsa-base pulseaudio pavucontrol
+    killall pulseaudio; rm -rf ~/.config/pulse/*; rm -rf ~/.pulse/*
+    sudo alsa force-reload
+    systemctl --user enable pulseaudio.service
+    systemctl --user stop pulseaudio.service
+    systemctl --user start pulseaudio.service
+}
+
+inst_add_hosts() { #desktop
+    :
+}
+
+inst_virtualbox() { #desktop
+    repo_key https://www.virtualbox.org/download/oracle_vbox_2016.asc && \
+        repo_key https://www.virtualbox.org/download/oracle_vbox.asc && \
+        repo_manualadd virtualbox "deb [arch=amd64] https://download.virtualbox.org/virtualbox/debian ${UBUNTU_CODENAME} contrib" || return 4
+    repo_upd
+    repo_inst virtualbox-6.0
+    sudo usermod -aG vboxusers $(__getRealUser)
+
+    #downloads extpack and installs
+    local tmpf="/tmp/Oracle_VM_VirtualBox_Extension_Pack-6.0.4.vbox-extpack"
+    [[ ! -f "$tmpf" ]] && wget --no-check-certificate -O "$tmpf" \
+        "https://download.virtualbox.org/virtualbox/6.0.4/Oracle_VM_VirtualBox_Extension_Pack-6.0.4.vbox-extpack"
+    local _fsize=$(stat -c%s "$tmpf")
+
+    [[ "$_fsize" -gt "19000000" ]] && \
+        sudo VBoxManage extpack install "$tmpf" --accept-license=56be48f923303c8cababb0bb4c478284b688ed23f16d775d729b89a2e8e5f9eb
+}
+
+inst_services() { #server,desktop
+    #apt-fast
+#    repo_inst apt-fast
+    repo_inst net-tools curl
+
+    #software management
+    #flatpack and snapd
+    repo_add ppa:alexlarsson/flatpak && \
+        repo_inst flatpak gnome-software-plugin-flatpak && \
+        flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+    #install snapd
+    repo_inst snapd
+}
+
+inst_nettools() { #core
+    repo_inst curl net-tools corkscrew
+    echo "wireshark-common  wireshark-common/install-setuid boolean true" | sudo debconf-set-selections
+    repo_inst wireshark nmap
+    repo_inst arp-scan
+    repo_inst zenmap
+    # q for query DNS
+    #repo_manualadd natesales "deb [trusted=yes] https://repo.natesales.net/apt /"
+    #repo_upd
+    #repo_inst q
+    inst_doggo
+}
+
+inst_doggo() {
+    [[ -f "/usr/local/bin/doggo" ]] && return 0
+    cd "$(mktemp -d)"
+    curl -sL "https://github.com/mr-karan/doggo/releases/download/v0.5.4/doggo_0.5.4_linux_${ARCH}.tar.gz" | tar xz
+    sudo mv doggo /usr/local/bin
+    # doggo should be available now in your $PATH
+}
+
+inst_communitheme() { #desktop:manual
+    repo_add ppa:communitheme/ppa || return 4
+    repo_inst gnome-shell-communitheme communitheme-sounds
+    repo_inst gtk-communitheme suru-icon-theme
+    repo_inst ubuntu-communitheme-session
+}
+
+inst_terminus() { #desktop:manual
+    repo_inst screen tmux
+    repo_inst_manual terminus \
+        "http://mirrors.kernel.org/ubuntu/pool/universe/g/gnome-python-desktop/python-gnomekeyring_2.32.0+dfsg-4_amd64.deb" \
+        "https://github.com/Eugeny/terminus/releases/download/v1.0.0-alpha.45/terminus_1.0.0-alpha.45_amd64.deb"
+}
+
+inst_productivity() { #desktop
+    repo_inst wmctrl
+
+    #import custom keybindings
+    chmod +x ~/bin/*
+
+    #clipboard
+    repo_inst copyq
+
+    #pv (progress on pipes)
+    repo_inst pv
+
+    #record audio from speakers
+    repo_inst pavucontrol
+}
+
+inst_nautilus_ext() { #desktop
+    repo_inst gtk2-engines-pixbuf
+    #repo_inst folder-color
+    repo_inst nautilus-admin
+    repo_inst imagemagick nautilus-image-converter
+
+    #nautilus python
+    repo_inst gir1.2-nautilus-3.0 python-nautilus
+    local na_python_dir=${XDG_DATA_HOME:-$HOME/.local/share/}
+    mkdir -p "$na_python_dir/nautilus-python/extensions/"
+}
+
+inst_touchpad_nb() { #desktop
+    if isLaptop; then
+       repo_add  ppa:atareao/atareao || return 4
+       repo_inst touchpad-indicator
+    fi
+}
+
+inst_youtube_dl() { #desktop,server
+    if ! command_exists "curl"; then
+        repo_inst curl || return 4
+    fi
+    sudo curl -L https://yt-dl.org/downloads/latest/youtube-dl -o /usr/local/bin/youtube-dl
+    sudo chmod a+rx /usr/local/bin/youtube-dl
+}
+
+inst_libs() { #core
+    repo_inst libcanberra-gtk-module
+    repo_inst lib32z1
+    repo_inst lib32ncurses5
+    repo_inst lib32bz2-1.0
+    repo_inst lsb-core
+}
+
+inst_devel() { #programming
+    command_exists "git" || inst_git
+    inst_devel_essential
+    inst_node
+    repo_inst golang-go
+    inst_yarn
+
+}
+
+inst_devel_essential() { #auto:inst_devel
+    repo_inst build-essential linux-headers-$(uname -r)
+    repo_inst manpages-dev man-db manpages-posix-dev
+    repo_inst libx11-dev ccache
+    repo_inst libncurses5-dev libncursesw5-dev
+    repo_inst autoconf automake1.11 libc6-dev g++-multilib libc6-dev-i386 alien
+    repo_inst clang-6.0 clang
+    #clang optional
+    #repo_inst clang-6.0-doc clang-format-6.0 clang-tools-6.0 libclang-6.0-dev python-clang-6.0
+    repo_inst libstdc++5 libstdc++-5-dev
+    repo_inst cmake
+    repo_inst pkg-config vim
+    repo_inst lib32z1 lib32ncurses5
+    repo_inst software-properties-common
+    #repo_inst python python-pip python-virtualenv
+    command_exists "python3" || inst_python
+}
+
+inst_python() { #core
+    repo_inst build-essential libssl-dev libffi-dev python3-dev
+    repo_inst python3 python3-pip python3-venv
+    repo_inst virtualenv python3-virtualenv
+    repo_inst libssl-dev libffi-dev python3-dev
+    command_exists "git" || inst_git
+}
+
+inst_wsl() { #category
+    __installers "core:auto" __install
+    __installers "programming:auto" __install
+    inst_x32
+    remove_fonts
+    __installers "latest" __install
+    printf "You can install this optional software manually:\n"
+    __ls "core:manual"
+    __ls "programming:manual"
+}
+
+inst_devel_db() { #desktop:manual,programming:manual
+    repo_inst sqlitebrowser
+}
+
+inst_hub() { #programming
+    command_exists "git" || inst_git
+    TMPD=$(mktemp -d)
+    OLD_D="$PWD"
+    cd "$TMPD"
+    wget https://github.com/github/hub/releases/download/v2.7.0/hub-linux-${ARCH}-2.7.0.tgz
+    if [[ $? -eq 0 ]]; then
+        tar -xvf hub-linux-amd64-2.7.0.tgz \
+            && cd hub-linux-amd64-2.7.0 \
+            && sudo ./install \
+            && cd "$OLD_D" \
+            && rm -rf "$TMPD"
+    fi
+    cd "$OLD_D"
+}
+
+inst_text_ed() { #desktop
+    #sublime
+    repo_key https://download.sublimetext.com/sublimehq-pub.gpg && \
+    repo_manualadd sublime-text "deb https://download.sublimetext.com/ apt/stable/" || return 4
+    repo_add ppa:jonathonf/vim || return 4
+    repo_upd
+    repo_inst sublime-text
+    config_subl_default
+    #installing vim
+    repo_inst vim-gtk
+}
+
+config_subl_default() { #auto:inst_text_ed
+    local _flist=("/etc/gnome/defaults.list" "/usr/share/applications/defaults.list" "$HOME/.local/share/applications/mimeapps.list")
+    if [[ -f "/usr/share/applications/sublime_text.desktop" ]]; then
+        for _f in "${_flist[@]}"; do
+            if [[ -f "$_f" ]]; then
+                sudo sed -i.bak -re 's/=gedit.desktop$/=sublime_text.desktop/g' "$_f"
+            fi
+        done
+    fi
+}
+
+inst_node() { #auto:inst_devel
+    curl -fsSL https://deb.nodesource.com/setup_current.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+}
+
+inst_bitbucket_github() { #auto:inst_devel
+    #install hub
+    #https://github-production-release-asset-2e65be.s3.amazonaws.com/401025/c237ef80-3822-11e9-8aaf-0be3cc34ecde?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAIWNJYAX4CSVEH53A%2F20190311%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20190311T162224Z&X-Amz-Expires=300&X-Amz-Signature=451cffb9f98f54b9852728a753a6fec47dcd9ea68a95bc40044e455b84e07067&X-Amz-SignedHeaders=host&actor_id=832671&response-content-disposition=attachment%3B%20filename%3Dhub-linux-amd64-2.10.0.tgz
+    :
+}
+
+inst_yarn() { #auto:inst_devel
+    repo_key_trusted "yarn" https://dl.yarnpkg.com/debian/pubkey.gpg && \
+    repo_manualadd yarn "deb [arch=${ARCH}] https://dl.yarnpkg.com/debian/ stable main" || return 4
+    repo_upd
+    repo_inst yarn
+}
+
+inst_vscode() { #desktop
+    repo_key_trusted microsoft https://packages.microsoft.com/keys/microsoft.asc && \
+    repo_manualadd vscode "deb [arch=${ARCH}] https://packages.microsoft.com/repos/vscode stable main" || return 4
+    repo_upd
+    repo_inst apt-transport-https
+    repo_inst code
+
+    for f in "code-url-handler.desktop" "code.desktop"; do
+        #add command line argument to code
+        sudo perl -p -i'.backup' -e 's/Exec=\/usr\/share\/code\/code (?!--ignore)/Exec=\/usr\/share\/code\/code --ignore-gpu-blacklist /' "/usr/share/applications/$f"
+    done
+}
+
+inst_apple() { #programming:manual
+    repo_inst ifuse libimobiledevice-utils
+    repo_inst libimobiledevice6
+    repo_inst libplist-utils
+    repo_inst libplist3
+    repo_inst ideviceinstaller
+    repo_inst python-imobiledevice
+    repo_inst python-plist
+    repo_inst usbmuxd libusbmuxd-tools libusbmuxd4
+}
+
+inst_kazaam() { #desktop
+    #screen recording
+    repo_add ppa:sylvain-pineau/kazam || return 4
+    repo_inst kazam
+}
+
+inst_android() { #programming:manual
+    repo_inst android-tools-adb android-tools-fastboot
+    repo_inst lib32z1 lib32ncurses5 gcc-multilib
+    repo_inst lib32bz2-1.0 lib32stdc++6
+
+    mkdir -p $HOME/.android
+    wget -O $HOME/.android/adb_usb.ini https://raw.githubusercontent.com/NicolasBernaerts/ubuntu-scripts/master/android/adb_usb.ini
+    sudo wget -O /etc/udev/rules.d/51-android.rules https://raw.githubusercontent.com/NicolasBernaerts/ubuntu-scripts/master/android/51-android.rules
+    sudo chmod a+r /etc/udev/rules.d/51-android.rules
+    sudo service udev restart
+}
+
+inst_prog_lazarus() { #programming:manual
+    repo_inst build-essential
+    repo_inst libgtk2.0-dev
+    repo_inst lazarus-ide fpc-source
+    repo_inst lazarus-ide-gtk2
+    repo_inst lcl lcl-gtk2 lcl-units lcl-utils
+    repo_inst fpc
+}
+
+inst_dbeaver() { #desktop,programming:manual
+    repo_add  ppa:serge-rider/dbeaver-ce || return 4
+    repo_inst dbeaver-ce
+}
+
+inst_speed_up() { #desktop
+    repo_remove zeitgeist
+    repo_remove zeitgeist-core
+    repo_remove zeitgeist-datahub
+    repo_remove unity-lens-files
+    repo_remove evolution evolution-exchange evolution-plugins evolution-common evolution-webcal
+    repo_remove unity-lens-friends unity-lens-shopping unity-lens-music
+    repo_inst gtk2-engines-pixbuf
+
+    sudo sed -i 's/NoDisplay=true/NoDisplay=false/g' /etc/xdg/autostart/*.desktop
+
+    local disableServices=(avahi-daemon NetworkManager-wait-online ModemManager lvm2-monitor vboxweb vboxballoonctrl vboxautostart-service apt-daily apport ondemand speech-dispatcher brltty debug-shell whoopsie)
+    local desktopOnly=(pppd-dns bluetooth wpa_supplicant)
+    for svc in "${disableServices[@]}"; do
+        sudo systemctl disable "$svc"
+#        sudo systemctl mask "$svc"
+    done
+    #if it not a laptop
+    if ! isLaptop; then
+        for svc in "${desktopOnly[@]}"; do
+            sudo systemctl disable "$svc"
+    #        sudo systemctl mask "$svc"
+        done
+    fi
+    #other tweaks
+    sudo chmod -x /usr/lib/x86_64-linux-gnu/hud/hud-service
+    sudo mv /usr/lib/evolution-data-server /usr/lib/evolution-data-server-disabled
+    sudo mv /usr/lib/evolution /usr/lib/evolution-disabled
+    sudo chmod -x /usr/lib/evolution/evolution-calendar-factory
+    sudo chmod -x /usr/lib/evolution/evolution-source-registry
+    sudo chmod -x /usr/lib/evolution/evolution-calendar-factory-subprocess
+    sudo chmod -x /usr/lib/evolution/evolution-addressbook-factory
+    sudo chmod -x /usr/lib/evolution/evolution-addressbook-factory-subprocess
+    #sudo apt purge gnome-software
+
+    #inode stuff
+    __changeConfig "^(\s*)?fs\.inotify\.max_user_watches=([0-9]*)" \
+        "fs.inotify.max_user_watches=524288" \
+        /etc/sysctl.d/99-sysctl.conf
+
+    #swappiness
+    if ! memoryBigThan "4100000"; then
+        __changeConfig "^(\s*)?vm\.swappiness=([0-9]*)" \
+            "vm.swappiness=10" \
+            /etc/sysctl.d/99-sysctl.conf
+    fi
+}
+
+inst_battery_fix() { #desktop
+    if isLaptop; then
+        repo_inst tlp tlp-rdw
+        repo_inst tp-smapi-dkms
+        repo_purge laptop-mode-tools
+        sudo tlp start
+    else
+        repo_purge tlp tlp-rdw
+        repo_purge tp-smapi-dkms
+        repo_purge laptop-mode-tools
+    fi
+    repo_inst smartmontools ethtool
+}
+
+inst_cloud() { #core
+    command_exists "curl" || repo_inst curl
+    #repo_inst grive
+    repo_inst_manual "rclone" \
+        https://downloads.rclone.org/rclone-current-linux-${ARCH}.deb
+    repo_fix
+}
+
+inst_basictools() { #core
+    sudo add-apt-repository main
+    sudo add-apt-repository universe
+    sudo add-apt-repository multiverse
+    sudo add-apt-repository restricted
+    repo_inst sendemail libio-socket-ssl-perl libnet-ssleay-perl
+}
+
+inst_samba() { #server
+    repo_inst samba samba-common
+}
+
+inst_pdf() { #core
+    repo_inst ghostscript enscript imagemagic poppler-utils
+}
+
+inst_pdfgui() { #desktop
+    repo_add ppa:malteworld/ppa || return 4
+    repo_inst texlive-extra-utils pdftk
+}
+
+add_fonts() { #desktop
+  #reinstall default fonts
+    repo_inst ttf-ubuntu-font-family fonts-opensymbol ttf-ubuntu-font-family fonts-symbola fonts-liberation fonts-freefont-ttf fonts-droid-fallback fonts-dejavu-core
+}
+
+remove_fonts() { #core
+    #purge all non essentials fonts
+    repo_purge fonts-lohit-beng-assamese fonts-lohit-beng-bengali fonts-lohit-deva fonts-lohit-gujr fonts-lohit-guru fonts-lohit-knda fonts-lohit-mlym fonts-lohit-orya fonts-lohit-taml fonts-lohit-taml-classical fonts-lohit-telu fonts-lohit-deva-marathi fonts-lohit-deva-nepali
+    repo_purge fonts-beng-extra fonts-gargi fonts-gujr-extra fonts-guru-extra fonts-kacst fonts-kacst-one fonts-kalapi fonts-khmeros-core fonts-lao fonts-lklug-sinhala fonts-nakula fonts-nanum fonts-navilu fonts-orya-extra fonts-pagul fonts-sahadeva
+    repo_purge fonts-samyak-deva fonts-samyak-gujr fonts-samyak-mlym fonts-samyak-taml fonts-sarai fonts-sil-abyssinica fonts-sil-padauk fonts-takao-pgothic fonts-telu-extra fonts-thai-tlwg fonts-tibetan-machine
+    repo_purge fonts-tlwg-garuda fonts-tlwg-garuda-ttf fonts-tlwg-kinnari fonts-tlwg-kinnari-ttf fonts-tlwg-laksaman fonts-tlwg-laksaman-ttf fonts-tlwg-loma fonts-tlwg-loma-ttf fonts-tlwg-mono fonts-tlwg-mono-ttf fonts-tlwg-norasi fonts-tlwg-norasi-ttf fonts-tlwg-purisa fonts-tlwg-purisa-ttf fonts-tlwg-sawasdee fonts-tlwg-sawasdee-ttf fonts-tlwg-typewriter fonts-tlwg-typewriter-ttf fonts-tlwg-typist fonts-tlwg-typist-ttf fonts-tlwg-typo fonts-tlwg-typo-ttf fonts-tlwg-umpush fonts-tlwg-umpush-ttf fonts-tlwg-waree fonts-tlwg-waree-ttf
+    repo_purge ttf-kochi-mincho ttf-kochi-gothic ttf-arabeyes ttf-arphic-ukai ttf-arphic-uming ttf-baekmuk ttf-bengali-fonts ttf-devanagari-fonts ttf-gentium ttf-gujarati-fonts ttf-indic-fonts ttf-kannada-fonts ttf-kochi-gothic ttf-lao ttf-malayalam-fonts ttf-mgopen ttf-oriya-fonts ttf-punjabi-fonts ttf-tamil-fonts ttf-telugu-fonts ttf-thai-tlwg ttf-unfonts-core ttf-indic-fonts-core ttf-wqy-zenhei
+    repo_purge fonts-kacst fonts-kacst-one fonts-khmeros-core fonts-lklug-sinhala fonts-guru fonts-nanum fonts-noto-cjk fonts-takao-pgothic fonts-tibetan-machine fonts-guru-extra fonts-lao fonts-sil-padauk 'fonts-sil-abyssinica fonts-tlwg-*' 'fonts-lohit-*' fonts-beng fonts-beng-extra fonts-gargi fonts-gubbi fonts-gujr fonts-gujr-extra fonts-kalapi fonts-lohit-gujr fonts-samyak-* fonts-noto-unhinted fonts-noto-hinted fonts-navilu fonts-nakula fonts-orya-extra fonts-pagul fonts-sahadeva fonts-sarai fonts-smc fonts-telu-extra fonts-wqy-microhei
+    repo_purge fonts-crosextra-caladea fonts-sil-gentium fonts-sil-gentium-basic
+    repo_purge fonts-smc fonts-smc-anjalioldlipi fonts-smc-chilanka fonts-smc-dyuthi fonts-smc-karumbi fonts-smc-keraleeyam fonts-smc-manjari fonts-smc-meera fonts-smc-rachana fonts-smc-raghumalayalamsans fonts-smc-suruma fonts-smc-uroob
+
+    #microsoft fonts?
+    #repo_inst ttf-mscorefonts-installer
+    sudo dpkg-reconfigure fontconfig
+    sudo fc-cache -f -v
+    fc-cache -f -v
+}
+
+inst_fonts() { #desktop
+    repo_inst gsfonts-x11
+    if [[ ! -f "/etc/fonts/conf.d/99-custom-fonts.conf" ]]; then
+
+        #disable bitmap emmbed fonts
+        cat <<EndOfConfig  | sudo tee /etc/fonts/conf.d/99-custom-fonts.conf > /dev/null 2>&1
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+    <!-- Antialias: enable -->
+    <match target="font">
+        <edit name="antialias" mode="assign">
+            <bool>true</bool>
+        </edit>
+    </match>
+    <!-- End: ANTIALIAS -->
+    <!-- RGBA: disable -->
+    <match target="font">
+        <edit name="rgba" mode="assign">
+            <const>none</const>
+        </edit>
+    </match>
+    <!-- End: RGBA -->
+    <!-- Auto Hint: Disable if ugly -->
+    <match target="font">
+        <edit name="hinting" mode="assign">
+            <bool>true</bool>
+        </edit>
+        <edit name="autohint" mode="assign">
+            <bool>true</bool>
+        </edit>
+        <edit name="hintstyle" mode="assign">
+            <const>hintslight</const>
+        </edit>
+    </match>
+    <!-- End: Auto Hint -->
+    <match target="font">
+        <edit name="embeddedbitmap" mode="assign">
+            <bool>false</bool>
+        </edit>
+    </match>
+    <match target="font">
+        <test qual="any" name="family">
+            <string>Monaco</string>
+        </test>
+        <edit name="embeddedbitmap">
+            <bool>false</bool>
+        </edit>
+    </match>
+</fontconfig>
+EndOfConfig
+        local fontf="$HOME/.local/share/fonts/"
+        sudo chown -R "${USER}.${USER}" "$fontf"
+        find "$fontf" -type f -exec sudo chmod 644 {} \;
+        find "$fontf" -type d -exec sudo chmod 755 {} \;
+        find "$fontf" -type d -exec mkfontscale {} \;
+        find "$fontf" -type d -exec mkfontdir {} \;
+        fc-cache -f -v -r "$fontf"
+        sudo fc-cache -f -v -r
+    fi
+    #you can try a config
+}
+
+inst_optimize_ssd(){ #desktop:manual
+    if [[ ! -f "/etc/cron.weekly/fstrim" ]]; then
+        cat <<EndOfConfig  | tee "/etc/cron.weekly/fstrim"  > /dev/null 2>&1
+#!/bin/sh
+# trim all mounted filesystems
+/sbin/fstrim --all || true
+EndOfConfig
+        sudo chmod +x /etc/cron.weekly/fstrim
+    fi
+    if [[ ! -f "/etc/sysctl.d/ssd.conf" ]]; then
+        cat <<EndOfConfig  | tee "/etc/sysctl.d/ssd.conf"  > /dev/null 2>&1
+# Reduce swap using
+vm.swappiness=1
+EndOfConfig
+    fi
+    echo "Put into /etc/fstab in options of ssd mount:"
+    echo "noatime,nodiratime,discard,errors=remount-ro "
+    echo "Done!"
+}
+
+inst_font_fix() { #desktop:manual
+    #put this inside /etc/enviroment
+    #FREETYPE_PROPERTIES="truetype:interpreter-version=35 cff:no-stem-darkening=1 autofitter:warping=1"
+    echo "Done!"
+}
+
+inst_font_fix1() { #desktop:manual
+    [[ -f "$HOME/.Xresources" ]] && return 0
+    cat <<EndOfConfig  | tee "$HOME/.Xresources"  > /dev/null 2>&1
+Xft.dpi: 96
+Xft.antialias: true
+Xft.hinting: true
+Xft.rgba: rgb
+Xft.autohint: false
+Xft.hintstyle: hintslight
+Xft.lcdfilter: lcddefault
+EndOfConfig
+    xrdb -merge $HOME/.Xresources
+}
+
+inst_font_fix2() {  #desktop:manual
+    repo_down_to "https://gist.githubusercontent.com/mperon/ef3394516935493f8665ba5766767d35/raw/a239e02f4a99e725a465026132dd481363f3137b/gistfile1.txt" \
+        "/etc/fonts/conf.d/99-custom-fonts.conf" \
+        "use_sudo"
+}
+
+inst_font_fix3() {  #desktop:manual
+    repo_down_to "https://gist.githubusercontent.com/mperon/cf7c0a14be988293d12798ad061032af/raw/68ee8dea94a82e1f2cfa2345e270acb9ec21934b/.fonts.conf" \
+        "/etc/fonts/conf.d/99-custom-fonts.conf" \
+        "use_sudo"
+}
+
+inst_manual() { #print
+    cat <<EndOfMessage
+Edit sudoers file to add this variables to sudo:
+    #$ sudo visudo
+Defaults        env_reset,pwfeedback
+Defaults        mail_badpass
+Defaults        env_keep+="http_proxy https_proxy ftp_proxy no_proxy"
+Defaults        env_keep+="HTTP_PROXY HTTPS_PROXY FTP_PROXY NO_POXY"
+Defaults        env_keep+="XAUTHORIZATION XAUTHORITY LS_COLORS"
+Defaults        env_keep+="HOSTNAME DISPLAY COLOR"
+Defaults        insults
+---------------------------------------------------------------
+Shared ARQUIVOS partition with windows config:
+    #$ sudo vim /etc/fstab
+    #/arq was on /dev/sda7 during installation
+          UUID=24EE731E46B299BE /arq            ntfs    defaults,windows_names,locale=en_US.utf8,umask=0002,gid=46,uid=1000 0       0
+
+Shared NETWORK FOLDERS partition with windows config:
+    #$ sudo vim /etc/fstab
+        //thor/shared$ /mnt/shared cifs user=$USER,uid=1000,gid=128,credentials=$HOME/.config/smbshares/credentials,users,iocharset=utf8,noauto 0 0
+
+Shared WINDOWS FOLDER with linux
+        //192.168.0.2/arq /media/arq cifs cifs user=$USER,uid=1000,gid=128,credentials=$HOME/.config/smbshares/credentials,users,iocharset=utf8,noauto 0 0
+
+
+Shared Network using sshfs
+    #$ sudo vim /etc/fstab
+        sshfs#$USER@UNIDADE:/media/shared /mnt/shared fuse user=$USER,uid=1000,gid=46,allow_other,users,noauto 0 0
+
+Add user to plugdev group:
+    #$ sudo usermod -a -G plugdev $USER
+
+Remove splash from boot:
+    #$ sudo /etc/default/grub
+    #remore quiet splash from it
+---------------------------------------------------------------
+EndOfMessage
+}
+
+inst_fix_opt() { #core
+    sudo usermod -a -G plugdev $USER
+    sudo chown -R root.plugdev /opt
+    sudo chmod -R g+rw /opt
+}
+
+inst_config() { #desktop
+    #disable printer auto-discovery
+        sudo systemctl disable cups-browsed.service
+
+    #enable middle click
+        gsettings set org.gnome.shell.extensions.dash-to-dock click-action 'previews'
+
+    #enable font-scaling factor
+        gsettings set org.gnome.mutter experimental-features "['scale-monitor-framebuffer']"
+
+
+    #disable error report
+        sudo sed -i.bak 's/enabled=1/enabled=0/g' /etc/default/apport
+    #remove package
+        repo_purge apport
+
+    #show all packages for initi
+        sudo sed -i 's/NoDisplay=true/NoDisplay=false/g' /etc/xdg/autostart/*.desktop
+
+    #everyone can use display
+    #   xhost +
+}
+
+inst_docker() { #server,desktop:manual
+    repo_purge remove docker docker-engine docker.io containerd runc
+    repo_inst apt-transport-https ca-certificates curl software-properties-common
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+    echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \
+      $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    repo_upd
+
+    repo_inst docker-ce docker-ce-cli containerd.io
+    #docker without sudo
+#    echo "Do MANUALLY:"
+#    echo "On Ubuntu, you can edit /etc/default/docker and uncomment the DOCKER_OPTS line:"
+#    cat <<EndOfConfig  | sudo tee /etc/docker/daemon.json > /dev/null 2>&1
+#    {
+#        "bip": "10.10.0.1/16"
+#    }
+#EndOfConfig
+#    sudo usermod -aG docker $(__getRealUser)
+#    exec su -l $(__getRealUser)
+    #docker compose
+    sudo curl -L "https://github.com/docker/compose/releases/download/v2.2.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    sudo chmod +x /usr/local/bin/docker-compose
+}
+
+inst_mailserver() { #manual
+    repo_inst mailutils
+}
+
+
+remove_desktop() { #server:manual
+    repo_purge ubuntu-desktop
+    repo_purge "x11-*"
+    repo_purge abiword abiword-common abiword-plugin-grammar abiword-plugin-mathview bison blueman brltty-x11 catfish elementary-icon-theme exo-utils flex gigolo gimp gimp-data gmusicbrowser gnome-icon-theme-full gnome-system-tools gnome-time-admin gnumeric gnumeric-common gnumeric-doc gstreamer0.10-gnomevfs gthumb gthumb-data gtk2-engines-pixbuf gtk2-engines-xfce indicator-application-gtk2 indicator-messages-gtk2 indicator-sound-gtk2 indicator-status-provider-pidgin leafpad libabiword-2.8 libaiksaurus-1.2-0c2a libaiksaurus-1.2-data libaiksaurusgtk-1.2-0c2a libao-common libao4 libaudio-scrobbler-perl libbabl-0.0-0 libclutter-1.0-0 libclutter-1.0-common libclutter-gtk-1.0-0 libcogl-common libcogl5 libconfig-inifiles-perl libencode-locale-perl libept1 libexo-1-0 libexo-common libfile-listing-perl libfont-afm-perl libgarcon-1-0 libgarcon-common libgdome2-0 libgdome2-cpp-smart0c2a libgegl-0.0-0 libgimp2.0 libglade2-0 libgnomevfs2-extra libgoffice-0.8-8 libgoffice-0.8-8-common libgsf-1-114 libgsf-1-common libgstreamer-perl libgtk2-notify-perl libgtk2-trayicon-perl libgtkmathview0c2a libhtml-form-perl libhtml-format-perl libhtml-parser-perl libhtml-tagset-perl libhtml-tree-perl libhttp-cookies-perl libhttp-daemon-perl libhttp-date-perl libhttp-message-perl libhttp-negotiate-perl libid3tag0 libido-0.1-0 libilmbase6 libio-socket-ssl-perl libjpeg-progs libkeybinder0 liblink-grammar4 libloudmouth1-0 liblwp-mediatypes-perl liblwp-protocol-https-perl libmad0 libmailtools-perl libnet-dbus-perl libnet-http-perl libnet-ssleay-perl liboobs-1-5 libopenexr6 libotr2 libots0 libpolkit-gtk-1-0 libsexy2 libtagc0 libthunarx-2-0 libtie-ixhash-perl libtimedate-perl libtumbler-1-0 liburi-perl libwv-1.2-3 libwww-perl libwww-robotrules-perl libxfce4ui-1-0 libxfce4util-bin libxfce4util-common libxfce4util4 libxfcegui4-4 libxfconf-0-2 libxml-parser-perl libxml-twig-perl libxml-xpath-perl libxss1 lightdm-gtk-greeter link-grammar-dictionaries-en m4 mpg321 murrine-themes orage parole pastebinit pidgin pidgin-data pidgin-libnotify pidgin-microblog pidgin-otr plymouth-theme-xubuntu-logo plymouth-theme-xubuntu-text python-configobj python-glade2 quadrapassel ristretto screensaver-default-images synaptic system-tools-backends tango-icon-theme tango-icon-theme-common tcl8.5 thunar thunar-archive-plugin thunar-data thunar-media-tags-plugin thunar-volman ttf-droid ttf-lyx tumbler tumbler-common xchat xchat-common xfburn xfce-keyboard-shortcuts xfce4-appfinder xfce4-cpugraph-plugin xfce4-dict xfce4-fsguard-plugin xfce4-indicator-plugin xfce4-mailwatch-plugin xfce4-mixer xfce4-mount-plugin xfce4-netload-plugin xfce4-notes xfce4-notes-plugin xfce4-notifyd xfce4-panel xfce4-places-plugin xfce4-power-manager xfce4-power-manager-data xfce4-quicklauncher-plugin xfce4-screenshooter xfce4-session xfce4-settings xfce4-smartbookmark-plugin xfce4-systemload-plugin xfce4-taskmanager xfce4-terminal xfce4-utils xfce4-verve-plugin xfce4-volumed xfce4-weather-plugin xfconf xfdesktop4 xfdesktop4-data xfwm4 xfwm4-themes xscreensaver xscreensaver-data xscreensaver-gl xubuntu-artwork xubuntu-default-settings xubuntu-desktop xubuntu-docs xubuntu-icon-theme xubuntu-wallpapers
+    repo_purge abiword abiword-common abiword-plugin-grammar abiword-plugin-mathview  ace-of-penguins audacious audacious-plugins audacious-plugins-data blueman  chromium-browser chromium-browser-l10n chromium-codecs-ffmpeg  elementary-icon-theme esound-common galculator gdebi gdebi-core  gecko-mediaplayer giblib1 gnome-icon-theme-full gnome-mplayer gnome-system-tools  gnome-time-admin gnumeric gnumeric-common gnumeric-doc gpicview  gtk2-engines-pixbuf guvcview hardinfo indicator-status-provider-pidgin leafpad  libaacs0 libabiword-2.9 libaudclient2 libaudcore1 libaudiofile1 libbinio1ldbl  libbluray1 libbs2b0 libcddb2 libcompfaceg1 libcue1 libencode-locale-perl  libept1.4.12 libesd0 libexo-1-0 libexo-common libexo-helpers  libfile-listing-perl libfluidsynth1 libfm-data libfm-gtk-data libfm-gtk1 libfm1  libfont-afm-perl libgdome2-0 libgdome2-cpp-smart0c2a libglade2-0 libgmlib0  libgmtk0 libgmtk0-data libgoffice-0.8-8 libgoffice-0.8-8-common libgringotts2  libgsf-1-114 libgsf-1-common libgtkmathview0c2a libguess1 libhtml-form-perl  libhtml-format-perl libhtml-parser-perl libhtml-tagset-perl libhtml-tree-perl  libhttp-cookies-perl libhttp-daemon-perl libhttp-date-perl libhttp-message-perl  libhttp-negotiate-perl libid3tag0 libimlib2 libio-socket-inet6-perl  libio-socket-ssl-perl libjpeg-progs libjpeg-turbo-progs liblink-grammar4  libloudmouth1-0 liblwp-mediatypes-perl liblwp-protocol-https-perl  libmailtools-perl libmcrypt4 libmenu-cache1 libmowgli2 libmpg123-0  libnet-dbus-perl libnet-http-perl libnet-ssleay-perl libobrender27 libobt0  libonig2 liboobs-1-5 libopts25 libots0 libpisock9 libresid-builder0c2a  libsidplay2 libsocket6-perl libtar0 libtidy-0.99-0 libtie-ixhash-perl  libtimedate-perl libuniconf4.6 liburi-perl libvdpau1 libwebcam0 libwv-1.2-4  libwvstreams4.6-base libwvstreams4.6-extras libwww-perl libwww-robotrules-perl  libxfce4ui-1-0 libxfce4util-bin libxfce4util-common libxfce4util4 libxfconf-0-2  libxml-parser-perl libxml-twig-perl libxml-xpath-perl libxss1  lightdm-gtk-greeter link-grammar-dictionaries-en lm-sensors lubuntu-artwork  lubuntu-artwork-12-04 lubuntu-core lubuntu-default-settings lubuntu-desktop  lubuntu-icon-theme lubuntu-software-center lxappearance lxappearance-obconf  lxinput lxkeymap lxlauncher lxmenu-data lxpanel lxpanel-indicator-applet-plugin  lxrandr lxsession lxsession-edit lxshortcut lxtask lxterminal mplayer2 mtpaint  ntp obconf openbox openbox-themes osmo pcmanfm pidgin pidgin-data  pidgin-libnotify pidgin-microblog plymouth-theme-lubuntu-logo  plymouth-theme-lubuntu-text python-pysqlite2 python-xklavier scrot sylpheed  sylpheed-doc sylpheed-i18n sylpheed-plugins synaptic system-tools-backends  transmission ttf-lyx uvcdynctrl uvcdynctrl-data wvdial xfburn  xfce-keyboard-shortcuts xfce4-power-manager xfce4-power-manager-data xfconf  xfonts-100dpi xpad xscreensaver xscreensaver-data
+    repo_purge alacarte cups-pk-helper gir1.2-accountsservice-1.0 gir1.2-caribou-1.0  gir1.2-clutter-1.0 gir1.2-cogl-1.0 gir1.2-coglpango-1.0 gir1.2-folks-0.6  gir1.2-gdesktopenums-3.0 gir1.2-gee-1.0 gir1.2-gjsdbus-1.0 gir1.2-gkbd-3.0  gir1.2-json-1.0 gir1.2-mutter-3.0 gir1.2-networkmanager-1.0  gir1.2-panelapplet-4.0 gir1.2-polkit-1.0 gir1.2-telepathyglib-0.12  gir1.2-telepathylogger-0.2 gir1.2-upowerglib-1.0 gir1.2-xkl-1.0 gjs  gnome-applets gnome-applets-data gnome-contacts gnome-icon-theme-full  gnome-panel gnome-panel-data gnome-session-fallback gnome-shell  gnome-shell-common gnome-themes-standard indicator-applet-complete  libcaribou-common libcaribou0 libclutter-1.0-0 libclutter-1.0-common  libcogl-common libcogl-pango0 libcogl9 libgjs0c libmozjs185-1.0 libmutter0  libpanel-applet-4-0 mutter-common python-gmenu
+    repo_purge unity-session unity ubuntu-session gdm3
+    sudo apt-get autoremove --assume-yes
+    sudo apt-get autoclean --assume-yes
+    sudo apt-get update && sudo apt-get dist-upgrade
+}
+
+#-----------------------------------------------------------
+#     CLEANING UP FUNCTIONS
+#-----------------------------------------------------------
+
+inst_final_cleanup() { #latest
+    dpkg -l 'linux-*' | sed '/^ii/!d;/'"$(uname -r | sed "s/\(.*\)-\([^0-9]\+\)/\1/")"'/d;s/^[^ ]* [^ ]* \([^ ]*\).*/\1/;/[0-9]/!d' | xargs sudo apt-get -y purge
+    rm -rf /tmp/inst
+}
+
+cleanup() { #latest
+    #install required packages
+#    repo_inst deborphan || return 4
+    iprint "apt-get" "[apt-get] Cleaning up packages installed ..."
+        sudo apt-get autoremove --assume-yes
+        sudo apt-get autoclean --assume-yes
+    istatus $?
+    # iprint "deborphan" "[deborphan] Removing orhpan packages ..."
+    #     sudo deborphan | xargs sudo apt-get -y -q remove --purge
+    # istauts "${PIPESTATUS[0]}"
+
+    #cleaninug files
+    iprint "find" "[find] Deleting old files from /tmp ..."
+        sudo find /tmp -ctime +10 -exec rm -rf {} +
+    istatus $?
+    #delete temp files
+    for f in /*; do
+        [[ ! -d "$f" ]] && continue
+        [[ -L "$f" ]] && continue
+        [[ " ${PROTECT[*]} " == *" $f "* ]] && continue
+        iprint "find" "[find] Deleting temp files from: $f ..."
+            sudo find "$f" -type f \( -name '*.swp' -o -name '*~' -o -name '*.bak' -o -name '.netrwhist' \) -delete
+        istatus $?
+    done
+    #delete and cleanup logs
+    iprint "find" "[find] Cleaning up logs ..."
+        sudo find /var/log/journal -name "*.journal" | xargs sudo rm
+        sudo systemctl restart systemd-journald
+        sudo find /var/log -type f -mtime +15 -delete
+        sudo find /var/log -type f \( -name '*.gz' -o -name '*.log.?' -o -name '*.txt.?' \) -delete
+        #resets logs
+        for i in $(find /var/log -type f); do
+            cat /dev/null > "$i";
+        done
+    istatus $?
+
+    #apt final
+    iprint "apt" "[apt] Resetting apt ..."
+        sudo rm /var/lib/apt/lists/lock
+        sudo rm /var/cache/apt/archives/lock
+        sudo rm /var/lib/dpkg/lock
+        sudo rm -rf /var/lib/apt/lists/
+        sudo rm -rf /var/lib/apt/lists/partial/
+        sudo apt-get install -f
+        sudo dpkg --configure -a
+        sudo apt-get clean -y -q
+        sudo apt-get autoclean -y -q
+        sudo apt-get autoremove -y -q
+        sudo apt-get update -y -q
+    istatus $?
+
+    #deleting trash
+    command_exists "trash-empty" && trash-empty
+    #deleting trash
+    for f in /home/*/.local/share/Trash; do sudo rm -rf $f/*; done
+    [[ -d /root/.local/share/Trash/ ]] && sudo rm -rf /root/.local/share/Trash/*
+
+}
+
+#keep sudo
+#__keep_sudo
+
+#check if has aapt-transport-https installed
+check_apt_transport
+
+#execute-it
+main "$@"
+exit $?

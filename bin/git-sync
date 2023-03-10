@@ -1,0 +1,21 @@
+#!/bin/bash
+#vim: ts=4 sw=4 et ft=bash
+#
+# Nukes a branch locally and on the origin remote.
+#
+# $1 - Branch name.
+#
+# Examples
+#
+#   git sync
+
+git branch -r | grep -v '\->' | while read remote; do
+
+    git branch --track "${remote#origin/}" "${remote}"
+
+done 2> /dev/null
+
+git fetch --all 2> /dev/null
+git pull --all
+git pull --tags
+git status

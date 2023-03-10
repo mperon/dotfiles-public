@@ -1,0 +1,368 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+# import functions
+source "${BASH_SOURCE%/*}/lib/bashFn.sh"
+
+V_PROGRAMS=(ffmpeg)
+V_AAC_ENC=aac
+V_FF=ffmpeg
+
+
+########################################
+#                                      #
+#           Main Function              #
+#                                      #
+########################################
+__main() {
+    if ! command_exists "${V_PROGRAMS[@]}"; then
+
+        if [[ "$1" == "--install" ]]; then
+            __print "Installing required programs..."
+            __install_required
+            exit $?
+        else
+            __error "You dont have one of necessary programs to run $0:"
+            __listRequiredPrograms
+        fi
+        exit 127
+    fi
+    #before actions make some assumptions
+    __check_codecs $(uname -s)
+
+    if [[ "${1}" == "--list" ]] || [[ "$1" == "-l" ]]; then
+        __help_all
+    fi
+
+    local ACTION=$1
+    shift
+
+    if [[ -z "${ACTION// }" ]]; then
+        __help_all
+        return 4
+    fi
+
+    if [[ "$ACTION" == "-h" || "$ACTION" == "--help" ]]; then
+        __help_all; return 4
+    elif [[ "$1" == "-h" || "$1" == "--help" ]]; then
+        __help_action "$ACTION" "$@"; return 4
+    fi
+
+    if function_exists "__action_${ACTION}"; then
+        "__action_${ACTION}" "$@"
+        return $?
+    else
+        echo "Function $arg doesnt exists!"
+        return 4
+    fi
+}
+
+__check_codecs() {
+    local v_type="${1// }"
+    case "${v_type,,}" in
+        *cygwin*)
+            V_AAC_ENC="aac"
+            ;;
+    esac
+}
+
+########################################
+#                                      #
+#       Actions Implementations        #
+#                                      #
+########################################
+#reduce size of video
+__action_reduce() {
+    #:desc Reduce VIDEO size
+    #:usage video reduce input [times] [output]
+    local input="${1}"
+    local output="${3}"
+    local times="${2:-2}"
+
+    local i_ext="${input##*.}"
+    local i_name="${input%.*}"
+
+    [[ ! -n "${input// }" ]] && __help_action "reduce" && return 4
+    [[ ! -n "${output// }" ]] && output="${i_name}_reduced.${i_ext}"
+
+    $V_FF -i "$input" -vf "scale=iw/${times}:ih/${times}" -c:v libx264 -crf 24 -b:v 1M \
+          -c:a "$V_AAC_ENC" "$output"
+}
+
+__action_mp3() {
+    #:desc Extract to mp3 from video the audio
+    #:usage video mp3 input [output]
+    local input="${1}"
+    local output="${2}"
+    local i_ext="${input##*.}"
+    local i_name="${input%.*}"
+
+    [[ ! -n "${input// }" ]] && __help_action "mp3" && return 4
+    [[ ! -n "${output// }" ]] && output="${i_name}.mp3"
+
+    $V_FF -i "$input" -vn -ar 44100 -ac 2 -b:a 192k "$output"
+}
+
+# only cut video
+__action_cut() {
+    #:desc Cut video, from time to time
+    #:usage video cut input start [end] [output]
+    local d_start= d_end= d_diff= ff_arg= n_end=
+    local input="${1}"
+    local n_start=$(__arg_date "$2")
+    local output="${4}"
+    local n_out="${n_start//\:/\_}"
+    [[ -n "${3// }" ]] && n_end=$(__arg_date "$3") && n_out="${n_out}_to_${n_end//\:/\_}"
+
+
+    # basic auxiliary variables
+    local i_ext="${input##*.}"
+    local i_name="${input%.*}"
+
+    #basic argument checking
+    [[ ! -n "${input// }" ]] && __help_action "cut" && return 4
+    [[ ! -n "${output// }" ]] && output="${i_name}_${n_out}.${i_ext}"
+
+    # convert to seconds
+    d_start=$(date -d "${n_start// }" +%s)
+    if [[ $? -ne 0 ]]; then
+        echo "[ERROR] start is invalid. use 00:XX as start!"
+        return 4
+    fi
+    if [[ -n "${n_end// }" ]]; then
+        # convert to seconds
+        d_end=$(date -d "${n_end// }" +%s)
+        if [[ $? -ne 0 ]]; then
+            echo "[ERROR] end is invalid. use 00:XX as lend!"
+            return 4
+        fi
+    fi
+    if [[ -n "${d_end}" ]]; then
+        [[ "$d_start" -gt "$d_end" ]] && echo "[ERROR] start is after end. " && return 4
+        d_diff=$(( $d_end - $d_start ))
+        ff_arg="-t $d_diff"
+    fi
+    $V_FF -ss "$n_start" -i "$input" $ff_arg \
+        -c copy "$output"
+
+}
+
+#MP4 - 1080p
+__action_fn1080p() {
+    #:desc Convert video to x264 and aac at 1080
+    #:usage video fn1080p input [output]
+    local input="${1}"
+    local output="${2}"
+    shift 2
+
+    local i_ext="${input##*.}"
+    local i_name="${input%.*}"
+
+    [[ ! -n "${input// }" ]] && __help_action "fn1080p" && return 4
+    [[ ! -n "${output// }" ]] && output="${i_name}_1080p.${i_ext}"
+
+    $V_FF -i "$input" -preset slow -codec:a "$V_AAC_ENC" -b:a 128k \
+        -codec:v libx264 -pix_fmt yuv1080p -b:v 4500k -minrate 4500k \
+        -maxrate 9000k -bufsize 9000k -vf scale=-1:1080 "$output"
+}
+
+#MP4 - 720p
+__action_fn720p() {
+    #:desc Convert video to x264 and aac at 720p
+    #:usage video fn1080p input [output]
+    local input="${1}"
+    local output="${2}"
+
+    local i_ext="${input##*.}"
+    local i_name="${input%.*}"
+
+    [[ ! -n "${input// }" ]] && __help_action "fn720p" && return 4
+    [[ ! -n "${output// }" ]] && output="${i_name}_1080p.${i_ext}"
+
+    $V_FF -i "$input" -preset slow -codec:a "$V_AAC_ENC" -b:a 128k \
+        -codec:v libx264 -b:v 2500k -minrate 1500k \
+        -maxrate 4000k -bufsize 5000k -vf scale=-1:720 "$output"
+}
+
+#MP4 - 480p
+__action_fn480p() {
+    #:desc Convert video to x264 and aac at 480p
+    #:usage video fn1080p input [output]
+    local input="${1}"
+    local output="${2}"
+
+    local i_ext="${input##*.}"
+    local i_name="${input%.*}"
+
+    [[ ! -n "${input// }" ]] && __help_action "fn480p" && return 4
+    [[ ! -n "${output// }" ]] && output="${i_name}_1080p.${i_ext}"
+
+    $V_FF -i "$input" -preset slow -codec:a "$V_AAC_ENC" -b:a 128k \
+        -codec:v libx264 -pix_fmt yuv420p -b:v 1000k -minrate 500k -maxrate 2000k \
+        -bufsize 2000k -vf scale=854:480 "$output"
+}
+
+#MP4 - 360p
+__action_fn360p() {
+    #:desc Convert video to x264 and aac at 360p
+    #:usage video fn1080p input [output]
+    local input="${1}"
+    local output="${2}"
+
+    local i_ext="${input##*.}"
+    local i_name="${input%.*}"
+
+    [[ ! -n "${input// }" ]] && __help_action "fn360p" && return 4
+    [[ ! -n "${output// }" ]] && output="${i_name}_1080p.${i_ext}"
+
+    $V_FF -i "$input" -preset slow -codec:a "$V_AAC_ENC" \
+        -b:a 128k -codec:v libx264 -pix_fmt yuv420p -movflags +faststart -b:v 750k \
+        -minrate 400k -maxrate 1000k -bufsize 1500k -vf scale=-1:360 "$output"
+}
+
+
+__action_car() {
+    #:desc Car compatible video
+    #:usage video car input [output]
+    local input="${1}"
+    local output="${2}"
+    shift 2
+
+    local i_ext="${input##*.}"
+    local i_name="${input%.*}"
+
+    [[ ! -n "${input// }" ]] && __help_action "car" && return 4
+    [[ ! -n "${output// }" ]] && output="${i_name}_car.mp4"
+
+    $V_FF -i "$input" -metadata comment="optimized" \
+        -f mp4 -vcodec libx264 -preset fast -profile:v main \
+        -vf scale=720:480:decrease \
+        -codec:a aac -b:a 256k "$output"
+}
+
+__action_compat() {
+    #:desc Convert video to most compatible format
+    #:usage video compat input [output]
+    local input="${1}"
+    local output="${2}"
+    shift 2
+
+    local i_ext="${input##*.}"
+    local i_name="${input%.*}"
+
+    [[ ! -n "${input// }" ]] && __help_action "compat" && return 4
+    [[ ! -n "${output// }" ]] && output="${i_name}_compat.mp4"
+
+    $V_FF -i "$input" -c:v libx264 -crf 23 -profile:v baseline \
+    -level 3.0 -movflags +faststart -c:a aac -ac 2 -b:a 128k \
+    -movflags faststart "$output"
+
+
+    #ffmpeg -i "$input" -preset veryslow -c:v libx264 -crf 18  \
+    #    -c:a aac "$output"
+
+}
+
+__action_wav() {
+    #:desc Extract audio from video
+    #:usage video wav input [output]
+    local input="${1}"
+    local output="${2}"
+    shift 2
+
+    local i_ext="${input##*.}"
+    local i_name="${input%.*}"
+
+    [[ ! -n "${input// }" ]] && __help_action "wav" && return 4
+    [[ ! -n "${output// }" ]] && output="${i_name}.wav"
+
+    $V_FF -i "$input" -vn -acodec pcm_s16le -ac 1 -ar 22050 "$output"
+}
+
+########################################
+#                                      #
+#         Utilities Functions          #
+#                                      #
+########################################
+__arg_date() {
+    local in="$1" PART= d_time=() time_str= ipart=
+    while IFS=':' read -ra PART; do
+        for i in "${PART[@]}"; do
+            [[ -n "$i" ]] && ipart=$(printf "%02d" "$i") && d_time+=("$ipart")
+        done
+    done <<< "$in"
+    time_str=$(join_by ":" "${d_time[@]}")
+    [[ -n "$time_str" ]] && time_str="00:00:00:$time_str" || time_str="00:00:00"
+    printf "${time_str:(-8)}"
+}
+
+
+__listRequiredPrograms() {
+    __print "Required Programs To Run: "
+    for prog in "${V_PROGRAMS[@]}"; do
+        __print "  ${prog}"
+    done
+    __print "To install run $0 --install"
+    __print "Thats All!"
+}
+
+__install_required() {
+    local ainst="sudo apt-get -qq -y -f -m install"
+    $ainst ffmpeg
+    return 0
+}
+
+__help_all() {
+    cat <<EndOfText
+Usage: video ACTION [action_options]
+
+Utility to work easily with Video files.
+Example: video reduce input.mp4
+
+For help of each action options, please call:
+    >> video action --help
+
+Avaliable modifiers:
+    -l, --list     List avaliable actions
+    -h, --help     Help text
+
+Avaliable actions:
+EndOfText
+    __list_actions
+
+}
+
+__help_read_fn() {
+    local help_of="$1"
+    help_desc= help_usage= help_example=
+    while IFS='' read -r line || [[ -n "${line// }" ]]; do
+        [[ "${line:0:1}" == "}" ]] && break
+        if [[ "${line:0:6}" == "#:desc" ]]; then
+            help_desc="${line:7}"
+        elif [[ "${line:0:7}" == "#:usage" ]]; then
+            help_usage="${line:8}"
+        fi
+    done < <(cat $0 | grep -A 5 "^__action_${help_of}(" | sed -e "s/^[[:space:]]\+//g")
+}
+
+__help_action() {
+    local help_of="$1"
+    __help_read_fn "$help_of"
+    echo "Utility to work easily with VIDEO files."
+    echo ""
+    echo "Action: ${help_of} - ${help_desc}"
+    [[ -n "${help_usage// }" ]] && echo "" && echo "Usage: ${help_usage}"
+}
+
+__list_actions() {
+    while IFS='' read -r line || [[ -n "${line// }" ]]; do
+        echo "   - $line"
+    done < <(cat $0 | grep -Eo "^__action_([a-zA-Z0-9_-]+)" | sed 's/^__action_//')
+}
+
+########################################
+#                                      #
+#           Main INVOCATION            #
+#                                      #
+########################################
+__main "$@"

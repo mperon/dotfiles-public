@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+GI_HOST="https://www.toptal.com/developers/gitignore/api"
+
+function urlencode() {
+    python3 -c 'import sys, urllib.parse as ulp; print(" ".join([ulp.quote(s) for s in sys.argv[1:]]))' \
+    "$@"
+}
+
+function join_by {
+    local IFS="$1"; shift; echo "$*";
+}
+
+defaults=windows,linux,macos,visualstudiocode,androidstudio,jetbrains+all,sublimetext,backup,dotenv
+args=$(urlencode "$@")
+query=$(join_by "," "$@")
+
+fullquery=$defaults
+[[ -n "$query" ]] && fullquery=$defaults,$query
+
+if [[ "$1" == "--list" ]]; then
+    fullquery="list"
+fi
+
+curl -sL "${GI_HOST}/${fullquery}"
+echo

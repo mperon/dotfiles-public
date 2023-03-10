@@ -1,0 +1,3 @@
+:gemdir:
+   - ~/.local/share/gem
+install: -n /opt/homebrew/bin

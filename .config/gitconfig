@@ -1,0 +1,577 @@
+[core]
+    editor = nvim
+    autocrlf = false
+[merge]
+    tool = vimdiff
+[color]
+    ui = true
+    status = auto
+    branch = auto
+    interactive = auto
+    diff = auto
+[color "diff-highlight"]
+    oldNormal = red bold
+    oldHighlight = yellow bold 52
+    newNormal = green bold
+    newHighlight = cyan bold 22
+[color "diff"]
+    meta = 11
+    frag = magenta bold
+    commit = cyan bold
+    old = red bold
+    new = green bold
+    whitespace = red reverse
+[pull]
+    rebase = false
+[push]
+    default = current
+[init]
+    defaultBranch = main
+[credential]
+    helper = store
+[merge]
+    tool = nvim
+[mergetool "nvim"]
+    cmd = nvim -f -c \"Gdiff\" \"$MERGED\"
+[diff]
+    submodule = log
+[alias]
+    #my custom aliases
+    add-url = remote set-url origin --add
+
+    ##
+    # One letter alias for our most frequent commands.
+    #
+    # Guidelines: these aliases do not use options, because we want
+    # these aliases to be easy to compose and use in many ways.
+    ##
+    a = add
+    b = branch
+    c = commit
+    d = diff
+    f = fetch
+    g = grep
+    l = log
+    m = merge
+    o = checkout
+    u = pull
+    p = push
+    r = remote
+    s = status
+    w = whatchanged
+    y = sync # is in bin. git-sync
+
+    #shortcuts
+    hist = log --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit
+
+    # Push the current branch to the remote "origin", and set it to track
+    # the upstream branch
+    publish = !git push -u origin $(git branch-name)
+
+    # Delete the remote version of the current branch
+    unpublish = !git push origin :$(git branch-name)
+
+    # show current git upstream
+    upstream = rev-parse --abbrev-ref --symbolic-full-name @{upstream}
+
+    # make a fast commit
+    fast = !git add -A && git put
+
+    get = !git sync
+
+    # Commit and send to remotes
+    put = "!f() { git commit \"$@\" && git push --all && git push --tags; }; f "
+
+    # Short aliases for our frequent commands.
+    #
+    # Guidelines:
+    #
+    #  * Generally speaking, the alias should be in the same
+    #    order as the command name followed by its options.
+    #
+    #    * Right: fb = foo --bar
+    #    * Wrong: bf = foo --bar
+    ##
+    pa = push --all
+    pt = !git push --all && git push --tags
+    fa = fetch --all
+    ua = pull --all
+    ut = !git pull --all && git pull --tags
+
+    # create branch
+    cb = checkout -b
+
+    # Push branch
+    pb = !git push -u origin $(git branch-name)
+
+    ### add ###
+    # add all
+    aa = add --all
+
+    # add all from here
+    aaf = add . --all
+
+    # add by patch - looks at each change, and asks if we want to put it in the repo.
+    ap = add --patch
+
+    # add just the files that are updated.
+    au = add --update
+
+    ### branch ###
+
+    # branch - edit the description
+    be = branch --edit-description
+
+    # branch and only list branches whose tips are reachable from the specified commit (HEAD if not specified).
+    bm = branch --merged
+
+    # branch and only list branches whose tips are not reachable from the specified commit (HEAD if not specified).
+    bnm = branch --no-merged
+
+    ### commit ###
+
+    # commit - amend the tip of the current branch rather than creating a new commit.
+    ca = commit --amend
+    amend = commit --amend -C HEAD
+
+    # commit - amend the tip of the current branch, and edit the message.
+    cam = commit --amend --message
+
+    # commit - amend the tip of the current branch, and do not edit the message.
+    cane = commit --amend --no-edit
+
+    # commit interactive
+    ci = commit --interactive
+
+    # commit with a message
+    cm = commit --message
+
+    ### checkout ###
+
+    # checkout - update the working tree to match a branch or paths. [same as "o" for "out"]
+    co = checkout
+
+    ### cherry-pick ###
+
+    # cherry-pick - apply the changes introduced by some existing commits; useful for moving small chunks of code between branches.
+    cp = cherry-pick
+
+    # cherry-pick - abort the picking process
+    cpa = cherry-pick --abort
+
+    # cherry-pick - continue the picking process
+    cpc = cherry-pick --continue
+
+    # cherry-pick without making a commit, and when when recording the commit, append a line that says "(cherry picked from commit ...)"
+    cp-nx = cherry-pick --no-commit -x
+
+    ### diff ###
+
+    # diff - show changes not yet staged
+    dc = diff --cached
+
+    # diff - show changes about to be commited
+    ds = diff --staged
+
+    # diff - show changes but by word, not line
+    dw = diff --word-diff
+
+    # diff deep - show changes with our preferred options. Also aliased as `diff-deep`.
+    dd = diff --check --dirstat --find-copies --find-renames --histogram --color
+
+    # Delete all local branches that have been merged into HEAD. Stolen from
+    # our favorite @tekkub:
+    #
+    #   https://plus.google.com/115587336092124934674/posts/dXsagsvLakJ
+    delete-local-merged = !git branch -d $(git branch --merged | grep -v '^*' | grep -v 'master' | grep -v 'main' | tr -d '\n')
+
+    # Open new, unstaged files in your $EDITOR.
+    #
+    # This is nice to have when you run a command line generator which generates a
+    # file or three in your working directory, and you know you want to immediately
+    # edit them in your editor next. Why waste time clicking around like some sort
+    # of plebian when you can just run another command?
+    edit-new = !editor $(git ls-files --others --exclude-standard)
+
+    ### clean ###
+
+    # clean everything to be pristine
+    cleanest = clean -ffdx
+
+    ## ls-files ##
+
+    # ls-files - show information about files in the index and the working tree; like Unix "ls" command.
+    ls = ls-files
+    ls-new = ls-files --others --exclude-standard
+    ls-del = ls-files --deleted
+    ls-mod = ls-files --modified
+    ls-ign = ls-files --others --i --exclude-standard
+
+    ln = ls-files --others --exclude-standard
+    ld = ls-files --deleted
+    lm = ls-files --modified
+
+    # ls-ignored -  list files that git has ignored.
+    ls-ignored = ls-files --others --i --exclude-standard
+
+    # Nukes a branch locally and on the origin remote.
+    #
+    # $1 - Branch name.
+    #
+    # Examples
+    #
+    #   git nuke add-git-nuke
+    nuke = "!f(){ git branch -D $1; git push origin :$1 }; f"
+
+
+
+    ### merge ###
+    mf = merge --no-ff
+    merge-nff = merge --no-ff
+    mnff = merge --no-ff
+
+    # merge but without autocommit, and with a commit even if the merge resolved as a fast-forward.
+    me = merge --no-commit --no-ff
+
+    ### pull ###
+
+    # pull if a merge can be resolved as a fast-forward, otherwise fail.
+    pf = pull --ff-only
+
+    # pull with rebase - to provide a cleaner, linear, bisectable history.
+    #
+    # To integrate changes between branches, you can merge or rebase.
+    #
+    # When we use git pull, git does a fetch then a merge.
+    # If weve made changes locally and someone else has pushed changes
+    # to our git host then git will automatically merge these together
+    # and create a merge commit that looks like this in the history:
+    #
+    #    12345678 - Merge branch 'foo' of bar into master
+    #
+    # When we use "git pull --rebase", git does a fetch then a rebase.
+    # A rebase resets the HEAD of your local branch to be the same as
+    # the remote HEAD, then replays your local commits back into repo.
+    # This means you dont get any noisy merge messages in your history.
+    # This gives us a linear history, and also helps with git bisect.
+    #
+    # To automatically do "pull --rebase" for any branch based on master:
+    #
+    #    git config branch.master.rebase true
+    #
+    # To automatically do "pull --rebase" for all branches:
+    #
+    #     git config --global branch.autosetuprebase always
+    #
+    pr = pull --rebase
+
+    ### rebase ###
+
+    # rebase - forward-port local commits to the updated upstream head.
+    rb = rebase
+
+    # rebase abort - cancel the rebasing process
+    rba = rebase --abort
+
+    # rebase - continue the rebasing process after resolving a conflict manually and updating the index with the resolution.
+    rbc = rebase --continue
+
+    # rebase - restart the rebasing process by skipping the current patch.
+    rbs = rebase --skip
+
+    # rbi - rebase interactive on our unpushed commits.
+    #
+    # Before we push our local changes, we may want to do some cleanup,
+    # to improve our commit messages or squash related commits together.
+    #
+    # Let's say I've pushed two commits that are related to a new feature and
+    # I have another where I made a spelling mistake in the commit message.
+    # When I run "git rbi" I get dropped into my editor with this:
+    #
+    #     pick 7f06d36 foo
+    #     pick ad544d0 goo
+    #     pick de3083a hoo
+    #
+    # Lets say I want to squash the "foo" and "goo" commits together,
+    # and also change "hoo" to say "whatever". To do these, I change "pick"
+    # to say "s" for squash; this tells git to squash the two together;
+    # I also edit "hoo" to rename it to "whatever". I make the file look like:
+    #
+    #     pick 7f06d36 foo
+    #     s ad544d0 goo
+    #     r de3083a whatever
+    #
+    # This gives me two new commit messages to edit, which I update.
+    # Now when I push the remote repo host receives two commits
+    #
+    #     3400455 - foo
+    #     5dae0a0 - whatever
+    #
+    rbi = rebase --interactive @{upstream}
+
+    #show alias
+    alias = "!f() { git config --list | grep -F alias.${1}= | cut -d= -f2-; }; f"
+
+    # See https://blog.filippo.io/git-fixup-amending-an-older-commit/
+    # This is a slightly modified version
+    fixup = "!f() { TARGET=$(git rev-parse \"$1\"); git commit --fixup=$TARGET && GIT_EDITOR=true git rebase --interactive --autosquash $TARGET~; }; f"
+
+    ### reflog ###
+
+    # reflog - reference log that manages when tips of branches are updated.
+    rl = reflog
+
+    ### remote ###
+
+    # remote - manage set of tracked repositories [same as "r"].
+    rr = remote
+
+    # remote show - gives some information about the remote <name>.
+    rrs = remote show
+
+    # remote update - fetch updates for a named set of remotes in the repository as defined by remotes.
+    rru = remote update
+
+    # remote prune - deletes all stale remote-tracking branches under <name>.
+    rrp = remote prune
+
+
+    ### revert ###
+
+    # revert - undo the changes from some existing commits
+    rv = revert
+
+    # revert without autocommit; useful when youre reverting more than one commits effect to your index in a row.
+    rvnc = revert --no-commit
+
+    ### show-branch ###
+
+    # show-branch - print a list of branches and their commits.
+    sb = show-branch
+
+    ### status ###
+    # status with short format instead of full details
+    ss = status --short
+
+    # status with short format and showing branch and tracking info.
+    ssb = status --short --branch
+
+    # Last tag in the current branch
+    lasttag = describe --tags --abbrev=0
+
+    # From https://gist.github.com/492227
+    head = log -n1
+    heads = !"git log origin/master.. --format='%Cred%h%Creset;%C(yellow)%an%Creset;%H;%Cblue%f%Creset' | git name-rev --annotate-stdin --always --name-only | column -t -s';'"
+    lost = !"git fsck | awk '/dangling commit/ {print $3}' | git show --format='SHA1: %C(yellow)%h%Creset %f' --annotate-stdin | awk '/SHA1/ {sub(\"SHA1: \", \"\"); print}'"
+
+    ### diff-* ###
+    diff-all = !"for name in $(git diff --name-only $1); do git difftool $1 $name & done"
+    diff-changes = diff --name-status -r
+    diff-stat = diff --stat --ignore-space-change -r
+    diff-staged = diff --cached
+
+    # Diff using our preferred options. A.k.a. `dd`.
+    diff-deep = diff --check --dirstat --find-copies --find-renames --histogram --color
+
+    ### grep-* ###
+
+    # grep i.e. search for text
+    g = grep
+
+    # grep - show line number
+    gl = grep --line-number
+
+    # grep group - search with our preferred options. Also aliased as `grep-group`.
+    gg = grep --break --heading --line-number --color
+
+
+    # Find text in any commit ever.
+    grep-all = !"f() { git rev-list --all | xargs git grep \"$@\"; }; f"
+
+    # Find text and group the output lines. A.k.a. `gg`.
+    grep-group = grep --break --heading --line-number --color
+
+    ### merge-* ###
+
+    # Given a merge commit, find the span of commits that exist(ed).
+    # Not so useful in itself, but used by other aliases.
+    # Thanks to Rob Miller for the merge-span-* aliaes.
+    merge-span = !"f() { echo $(git log -1 $2 --merges --pretty=format:%P | cut -d' ' -f1)$1$(git log -1 $2 --merges --pretty=format:%P | cut -d' ' -f2); }; f"
+
+    # Find the commits that were introduced by a merge
+    merge-span-log = "!git log `git merge-span .. $1`"
+
+    # Show the changes that were introduced by a merge
+    merge-span-diff = !"git diff `git merge-span ... $1`"
+
+    # Show the changes that were introduced by a merge, in your difftool
+    merge-span-difftool = !"git difftool `git merge-span ... $1`"
+
+    # Interactively rebase all the commits on the current branch
+    rebase-branch = !"git rebase --interactive `git merge-base master HEAD`"
+
+    # Sort by date for branches; can be useful for spring cleaning
+    refs-by-date = for-each-ref --sort=-committerdate --format='%(committerdate:short) %(refname:short)'
+
+    # Find all objects that aren't referenced by any other object (orphans).
+    # To help an orphan, we create a new branch with the orphan's commit hash,
+    # then merge it into our current branch:
+    #
+    #    git branch foo <commit>
+    #    git merge foo
+    #
+    orphans = fsck --full
+
+    # List all blobs by size in bytes.
+    # By [CodeGnome](http://www.codegnome.com/)
+    rev-list-all-objects-sort-by-size = !"git rev-list --all --objects  | awk '{print $1}'| git cat-file --batch-check | fgrep blob | sort -k3nr"
+
+    ### LOG ALIASES ###
+    # Show log of changes, most recent first
+    log-changes = log --oneline --reverse
+
+    # Show log as a graph
+    log-graph = log --graph --all --oneline --decorate
+
+    # Show the date of the earliest commit, in strict ISO 8601 format
+    log-first-date = !"git log --date-order --format=%cI | tail -1"
+
+    # Show the date of the latest commit, in strict ISO 8601 format
+    log-latest-date = log -1 --date-order --format=%cI
+
+    ### WORKFLOW ALIASES ###
+
+    # Stash aliases for push & pop
+    #
+    # Note that if you are using an older version of git, before 2.16.0,
+    # then you can use the older "stash save" instead of the newer "stash push".
+    save = stash push
+    pop = stash pop
+
+    # Stash snapshot - from http://blog.apiaxle.com/post/handy-git-tips-to-stop-you-getting-fired/
+    # Take a snapshot of your current working tree without removing changes.
+    # This is handy for refactoring where you can't quite fit what you've done
+    # into a commit but darent stray too far from now without a backup.
+    #
+    # Running this:
+    #
+    #    $ git snapshot
+    #
+    # Creates this stash:
+    #
+    #    stash@{0}: On feature/handy-git-tricks: snapshot: Mon Apr 8 12:39:06 BST 2013
+    #
+    # And seemingly no changes to your working tree.
+    #
+    snapshot = !git stash push "snapshot: $(date)" && git stash apply "stash@{0}"
+
+    # Do everything we can to make the local repo like the master branch.
+    #
+    # TODO: handle tags, and delete superfluous branches, and add error handling.
+    #
+    mastery = !git checkout master && git fetch origin --prune && git reset --hard origin/master
+
+    ##
+    # Reset & Undo
+    ##
+
+    # Reset and undo aliases are ways to move backwards on the commit chain.
+    # We find that novices prefer the wording "undo"; experts prefer "reset".
+    undo = reset --soft HEAD^
+    reset-commit       = reset --soft HEAD~1
+    reset-commit-hard  = reset --hard HEAD~1
+    reset-commit-clean = !git reset --hard HEAD~1 && git clean -fd
+
+    # Undo is simply a synonym for "reset" because "undo" can help novices.
+    undo-commit        = reset --soft HEAD~1
+    undo-commit-hard   = reset --hard HEAD~1
+    undo-commit-clean  = !git reset --hard HEAD~1 && git clean -fd
+
+    # Nicknames
+    uncommit = reset --soft HEAD~1
+    unadd = reset HEAD
+    unstage = reset HEAD
+
+    # Discard changes in a (list of) file(s) in working tree
+    discard = checkout --
+
+    # Clean and discard changes and untracked files in working tree
+    cleanout = !git clean -df && git checkout -- .
+
+    # Expunge a file everywhere; this command is typically for a serious problem,
+    # such as accidentally committing a file of sensitive data, such as passwords.
+    # After you use command, you will likely need to force push everything.
+    # See https://help.github.com/articles/removing-sensitive-data-from-a-repository/
+    expunge = !"f() { git filter-branch --force --index-filter \"git rm --cached --ignore-unmatch $1\" --prune-empty --tag-name-filter cat -- --all }; f"
+
+    # Edit all files of the given type
+    edit-cached = !"f() { git ls-files --cached | sort -u ; }; `git var GIT_EDITOR` `f`"
+    edit-deleted = !"f() { git ls-files --deleted | sort -u ; }; `git var GIT_EDITOR` `f`"
+    edit-others = !"f() { git ls-files --others | sort -u ; }; `git var GIT_EDITOR` `f`"
+    edit-ignored = !"f() { git ls-files --ignored | sort -u ; }; `git var GIT_EDITOR` `f`"
+    edit-killed = !"f() { git ls-files --killed | sort -u ; }; `git var GIT_EDITOR` `f`"
+    edit-modified = !"f() { git ls-files --modified | sort -u ; }; `git var GIT_EDITOR` `f`"
+    edit-stage = !"f() { git ls-files --stage | cut -f2 | sort -u ; }; `git var GIT_EDITOR` `f`"
+
+    # Editing and adding conflicted files: when we get many merge conflicts
+    # and want to quickly solve them using an editor, then add the  files.
+    edit-unmerged = !"f() { git ls-files --unmerged | cut -f2 | sort -u ; }; `git var GIT_EDITOR` `f`"
+    add-unmerged = !"f() { git ls-files --unmerged | cut -f2 | sort -u ; }; git add `f`"
+
+    # Ours & Theirs - easy merging when you know which files you want
+    #
+    # Sometimes during a merge you want to take a file from one side wholesale.
+    #
+    # The following aliases expose the ours and theirs commands which let you
+    # pick a file(s) from the current branch or the merged branch respectively.
+    #
+    #   * ours: checkout our version of a file and add it
+    #   * theirs: checkout their version of a file and add it
+    #
+    # N.b. the function is there as hack to get $@ doing
+    # what you would expect it to as a shell user.
+    #
+    ours   = !"f() { git checkout --ours $@ && git add $@; }; f"
+    theirs = !"f() { git checkout --theirs $@ && git add $@; }; f"
+
+    # Work In Progress: from https://gist.github.com/492227 and VonC on stackoverflow.
+    # This enables a quick way to add all new and modified files to the index,
+    # while cleaning the index from the files removed from the working tree;
+    # this cleaning will facilitate a rebase, because there wont be any conflict
+    # due to an "unclean" working directory (not in sync with the index).
+    # The unwip will restore the deleted files to the working tree.
+    wip = !"git add --all; git ls-files --deleted -z | xargs -0 git rm; git commit --message=wip"
+    unwip = !"git log -n 1 | grep -q -c wip && git reset HEAD~1"
+
+    # Friendly wording is easier to remember.
+    # Thanks to http://gggritso.com/human-git-aliases
+    branches = branch -a
+    tags = tag -n1 --list
+    stashes = stash list
+
+    # Show git root
+    show-root = rev-parse --show-toplevel
+
+    # go to root dir
+    root = !cd $(git rev-parse --show-toplevel)
+
+    # Get the current branch name
+    branch-name = rev-parse --abbrev-ref HEAD
+
+    # Get the upstream branch name
+    upstream-name = !git for-each-ref --format='%(upstream:short)' $(git symbolic-ref -q HEAD)
+
+    # Execute shell scripts. Git always runs scripts in the top directory.
+    # For example "git exec pwd" will always show you the top directory.
+    exec = ! exec
+
+    # set git upstream
+    track = !"f(){ b=$(git rev-parse --abbrev-ref HEAD); git branch $b --set-upstream-to origin/$b; }; f"
+
+    # Show the diff of everything you haven't pushed yet.
+    unpushed = !"f() { b=$(git rev-parse --abbrev-ref HEAD); git diff origin/${b}..HEAD"; }; f"
+
+    # creates a zip
+    zip = "!f(){ DN=$(basename $(git rev-parse --show-toplevel)); git archive --format=tar.gz ${1:-HEAD} > $DN-${1:-HEAD}.tar.gz; }; f "
+    
+

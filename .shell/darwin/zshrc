@@ -1,0 +1,23 @@
+#!/usr/bin/env zsh
+# vim: ts=4 sw=4 et ft=sh
+# To the extent possible under law, the author(s) have dedicated all
+# copyright and related and neighboring rights to this software to the
+# public domain worldwide. This software is distributed without any warranty.
+# You should have received a copy of the CC0 Public Domain Dedication along
+# with this software.
+# If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
+
+# disable beep
+# https://koenwoortman.com/zsh-no-beep/
+unsetopt beep
+
+# add keys to vault
+# if ! ssh-add -l &>/dev/null; then
+#     for _k in id_rsa id_ed25519; do
+#         if [[ -f $HOME/.ssh/$_k ]]; then
+#             ssh-add $HOME/.ssh/$_k &> /dev/null
+#             break
+#         fi
+#     done
+#     unset _k
+# fi

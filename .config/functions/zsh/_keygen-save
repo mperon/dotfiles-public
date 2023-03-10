@@ -1,0 +1,14 @@
+#compdef keygen-save
+# -*- mode: bash -*-
+
+integer ret=1
+
+local -a args
+
+args+=(
+    '(-f)-f[Override existing keys]'
+)
+
+_arguments -n -C -s $args[@] && ret=0
+
+return ret

@@ -1,0 +1,9 @@
+#!/bin/bash
+#vim: ts=4 sw=4 et ft=bash
+#
+
+git filter-branch --tree-filter "rm -rf $1" --prune-empty HEAD
+git for-each-ref --format="%(refname)" refs/original/ | xargs -n 1 git update-ref -d
+git commit
+git gc
+git push origin $(git rev-parse --abbrev-ref HEAD ) --force

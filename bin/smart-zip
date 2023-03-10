@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+#bash functions
+source "${BASH_SOURCE%/*}/lib/bashFn.sh"
+
+T_SOURCE= A_COUNT= A_TOTAL= A_SPLIT_TMP= A_CHUNK_SIZE=
+A_BIG_FILE_BYTES=1073741824 #1GB
+
+
+__main() {
+    local action=
+    local a_file=
+
+    if [[ "${1}" == "--split" ]]; then
+        __search "${2:-.}" __zip_split
+    elif [[ "${1}" == "--chunks" ]]; then
+        A_CHUNK_SIZE="${2:-1G}"
+        __search "${3:-.}" __chunks_split
+    elif [[ "${1}" == "--both" ]]; then
+        a_file=$(readlinkf "${2}")
+        [[ ! -f "$a_file" ]] && __error "File ${a_file} doesnt exists.." && return 4
+        __process_file "$a_file"
+        __search "./" __zip_split
+    else
+        [[ "${1:0:1}" == "-" ]] && a_file="${2}" || a_file="${1}"
+        a_file=$(readlinkf "$a_file")
+        [[ ! -f "$a_file" ]] && __error "File ${a_file} doesnt exists.." && return 4
+        __process_file "$a_file"
+    fi
+    return $?
+}
+
+__process_file() {
+    dos2unix "$1"
+    while IFS= read -r line; do
+        __process_line "$line"
+    done < "$1"
+}
+
+__process_line() {
+    local a_path=$(cygpath "$1")
+
+    #first go to dir
+    pushd "${a_path}" > /dev/null
+    echo "Processing Folder: ${a_path}"
+
+    for f in *; do
+        if [[ -d "$f" ]]; then
+            count_zip=$(find "${f}/" -maxdepth 1 -type f -iname '*.zip' -printf "\n" | wc -l)
+            [[ "$count_zip" -gt 0 ]] && echo "Folder: ${a_path}/${f} already have zip files.. Skip!" && continue
+            __process_folder "$f" "$a_path"
+        fi
+    done
+
+    popd > /dev/null
+}
+
+
+__process_folder() {
+    local fld="${1}" parent="${2}" fsize=
+    local fout="${fld}.zip"
+    echo "Processing ${fld} on $parent"
+
+    pushd "${a_path}/${fld}" > /dev/null
+
+        echo zip -r --move -9 "../${fout}" *
+
+    popd > /dev/null
+
+    if [[ -f "${fout}" ]]; then
+        fsize=$(stat -c%s "${fout}")
+        [[ "${fsize}" -gt 1000 ]] && echo "Deleting origin.." && echo rm -rf "${fld}"
+    fi
+}
+
+__search() {
+    A_COUNT= A_TOTAL=
+    A_SPLIT_TMP=$(mktemp)
+    local a_action="${2:-__zip_split}"
+    trap "{ rm -f $A_SPLIT_TMP; }" EXIT
+
+    find "${1}" -type f -iname '*.zip' -size +1G | sort > $A_SPLIT_TMP
+
+    cat $A_SPLIT_TMP
+
+    read A_TOTAL n <<< $(wc -l $A_SPLIT_TMP)
+    echo "Total Files: $A_TOTAL"
+    A_COUNT=0
+    while IFS= read -r line ;do
+        ((A_COUNT++))
+        $a_action "$line"
+    done < $A_SPLIT_TMP
+}
+
+
+__chunks_split() {
+    local a_file=$(readlinkf "${1}")
+    local a_name=$(basename "${a_file}")
+    local tdir=$(dirname "$a_file")
+    local fsize= zs_size=
+
+    __info "($A_COUNT/$A_TOTAL) Splitting big file ${a_name} into chunks..."
+
+    #first go to dir
+    pushd "${tdir}" > /dev/null
+
+        echo split -b $A_CHUNK_SIZE -d "${a_file}" "${a_name}."
+        # check if size is equal
+        fsize=$(stat -c%s "${a_file}")
+        zs_size=$(/usr/bin/du -sbc "${a_name}.*" | egrep "[0-9]+\s+total$" | cut -f1)
+        if [[ "$fsize" -le "$zs_size" ]]; then
+            echo rm -f "${a_file}"
+        fi
+
+    popd > /dev/null
+}
+
+
+__zip_split() {
+    local a_file=$(readlinkf "${1}")
+    local a_name=$(basename "${a_file}")
+    local tdir=$(dirname "$a_file")
+    local fsize= zs_size=
+
+    __info "($A_COUNT/$A_TOTAL) Splitting big file ${a_name} into chunks..."
+
+    #first go to dir
+    pushd "${tdir}" > /dev/null
+
+        #split big files to 1GB
+        echo zipsplit -n $A_BIG_FILE_BYTES "${a_name}"
+
+        fsize=$(stat -c%s "${a_file}")
+        zs_size=$(/usr/bin/du -sbc "${a_name%.zip}?*.zip" | egrep "[0-9]+\s+total$" | cut -f1)
+
+        if [[ "$fsize" -lt "$zs_size" ]]; then
+            echo rm -f "${a_file}"
+        fi
+
+    popd > /dev/null
+
+}
+
+# to 1GB
+# find . -type f -iname '*.zip' -size +1G
+# zipsplit -n 1073741824  file.zip
+# files size
+# \du -sbc ACADEPOL/*.zip | egrep "[0-9]+\s+total$"
+
+__main "$@"
+exit $?

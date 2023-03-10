@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+__kill() {
+    /bin/pidof "$1" | xargs kill -s TERM
+}
+
+__raise() {
+    /usr/bin/nohup "$@" </dev/null &>/dev/null &
+}
+
+if [[ "$1" == "--close" ]]; then
+    /bin/pidof "franz" && __kill "franz"
+    /bin/pidof "conky" && __kill "conky"
+    [[ -x /usr/bin/gnome-screensaver-command ]] && \
+        /usr/bin/gnome-screensaver-command -l
+else
+    /usr/bin/wmctrl -x -a "franz.Franz" || __raise $HOME/bin/franz.sh
+    /usr/bin/wmctrl -x -a "Conky.Conky" || __raise $HOME/bin/conky.sh
+fi

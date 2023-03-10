@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+#vim: ts=4 sw=4 et ft=python
+
+import mimetypes
+import sys
+import base64
+
+a_file = sys.argv[1]
+
+a_mime_type = mimetypes.guess_type(a_file)
+
+with open(a_file, 'rb') as image_file:
+    image_data_binary = image_file.read()
+    image_data = (base64.b64encode(image_data_binary)).decode('ascii')
+    print("data:{};base64,{}".format(a_mime_type[0], image_data))

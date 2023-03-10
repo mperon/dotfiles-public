@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=bashs
+
+_USER=${1:-$USER}
+_HOME=$(bash <<< "echo ~$_USER")
+
+sudo chown -R $_USER $_HOME/.ssh
+sudo chmod 700 $_HOME/.ssh
+sudo chmod 644 $_HOME/.ssh/authorized_keys
+sudo chmod 644 $_HOME/.ssh/known_hosts
+sudo chmod 644 $_HOME/.ssh/config
+sudo chmod 644 $_HOME/.ssh/config.d/*
+sudo chmod 600 $_HOME/.ssh/id*
+sudo chmod 644 $_HOME/.ssh/*.pub

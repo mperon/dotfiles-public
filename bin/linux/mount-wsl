@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+cmd_exists() {
+    local cmd=$1
+    command -v $cmd > /dev/null 2>&1
+    return "${PIPESTATUS[0]}"
+}
+
+function is_mounted() {
+    if cmd_exists "mountpoint"; then
+        mountpoint -q -- "$1" > /dev/null 2>&1
+        return "${PIPESTATUS[0]}"
+    else
+        mount | awk -v DIR="$1" '{if ($3 == DIR) { exit 0}} ENDFILE{exit -1}'
+    fi
+}
+
+
+letter="${1}" mount_dir="${2}"
+if [[ -z "${letter// }" ]]; then
+    echo "Usage: mount-wsl letter [directory] ..."
+    exit 4
+fi
+
+if [[ -z "${mount_dir// }" ]]; then
+    let=${letter:0:1}
+    mount_dir="/mnt/${let,,}"
+fi
+# check if mount point exist
+if [[ ! -d "$mount_dir" ]]; then
+    sudo mkdir -p "$mount_dir"
+fi
+
+# check if is already mounted
+if is_mounted "$mount_dir"; then
+    echo "[ERROR] The mount dir: ${mount_dir} is already mounted!"
+    exit 4
+fi
+# mount there
+if sudo mount -t drvfs "${letter:0:1}:" "${mount_dir}"; then
+    echo "Sucessfully mounted ${letter:0:1}: at ${mount_dir} !"
+    exit 0
+fi
+echo "Something went wrong!"
+exit 4

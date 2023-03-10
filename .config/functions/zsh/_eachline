@@ -1,0 +1,18 @@
+#compdef eachline
+# -*- mode: bash -*-
+
+integer ret=1
+
+local -a args
+
+args+=(
+    '1:file:_files "*(.)"'
+    '2::command to be evaluated using $line as content.'
+)
+
+_arguments $args[@] && ret=0
+
+return ret
+
+
+

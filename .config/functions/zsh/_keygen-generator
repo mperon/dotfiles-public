@@ -1,0 +1,24 @@
+#compdef keygen-generator
+# -*- mode: bash -*-
+
+_keys_options() {
+  local -a options=(
+    "ed:use ed25519 for key generation"
+    "rsa:use rsa for key generation (default)"
+  )
+
+  _describe -t options 'option' options "$@"
+}
+
+
+integer ret=1
+
+local -a args
+
+args+=(
+    '1: :_keys_options'
+)
+
+_arguments -C $args[@] && ret=0
+
+return ret

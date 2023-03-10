@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# vim: ts=4 sw=4 et ft=sh
+# To the extent possible under law, the author(s) have dedicated all
+# copyright and related and neighboring rights to this software to the
+# public domain worldwide. This software is distributed without any warranty.
+# You should have received a copy of the CC0 Public Domain Dedication along
+# with this software.
+# If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
+
+# base-files version 4.3-2
+
+# ~/.myprofile: executed by the command interpreter for login shells, sourced
+# by ~/.profile and ~/.bash_profile
+
+# The latest version as installed by the Cygwin Setup program can
+# always be found at /etc/defaults/etc/skel/.profile
+
+# Modifying /etc/skel/.profile directly will prevent
+# setup from updating it.
+
+# The file in your home directory (~/.myprofile) is yours, please
+# feel free to customise it to create a shell
+# environment to your liking.  If you feel a change
+# would be benificial to all, please feel free to send
+# a patch to the cygwin mailing list.
+# User dependent .profile file
+# Detects OS
+[[ -z "${OS}" ]] && OS=$(uname -s | cut -d"_" -f1 | tr '[:upper:]' '[:lower:]')
+
+
+# profile: executed by the command interpreter for login shells.
+export PROFILED="$HOME/.config/profile.d"
+[[ ! -d "$PROFILED" ]] && mkdir -p "$PROFILED"
+
+# proxy settings
+#[[ -x "$HOME/bin/proxyconfig" ]] && \
+#	$HOME/bin/proxyconfig --check
+
+# foreach profile.d file
+for f in "${PROFILED}"/*; do
+    if [[ -f "$f" ]]; then
+        source $f
+    fi
+done
+unset f
+
+# called only if sourced directly (no shell name)
+if [[ -z "$SH_NAME" ]]; then
+    [[ -f "$HOME/.shell/exports" ]] && source "$HOME/.shell/exports"
+    [[ -f "$HOME/.shell/${OS}/exports" ]] && source "$HOME/.shell/${OS}/exports"
+fi
+
+#configure brew
+if cmd_exists brew; then
+    if [[ -z "$HOMEBREW_PREFIX" ]]; then
+        # save for future use
+        brew shellenv > $PROFILED/10-brew.sh
+        # load this time
+        eval $(brew shellenv)
+    fi
+fi

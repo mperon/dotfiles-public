@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+command_exists() {
+    command -v "$1" > /dev/null 2>&1
+    return $?
+}
+
+
+clipboard() {
+    if [[ $OSTYPE == darwin* ]]; then
+        if [[ ! -t 0 ]]; then
+            pbcopy
+        else
+            pbpaste
+        fi
+    elif [[ $OSTYPE == cygwin* ]] || [[ $OSTYPE == *msys* ]]; then
+        if [[ ! -t 0 ]]; then
+            tee > /dev/clipboard
+        else
+            cat /dev/clipboard
+        fi
+    elif [[ $OSTYPE == linux* ]] && [[ -n $WSL_DISTRO_NAME ]]; then
+        if [[ ! -t 0 ]]; then
+            clip.exe
+        else
+            powershell.exe -Command Get-Clipboard
+        fi
+    elif command -v xclip > /dev/null 2>&1; then
+        if [[ ! -t 0 ]]; then
+            xclip -selection clipboard -in
+        else
+            xclip -selection clipboard -out
+        fi
+    else
+        echo "Unsupported OS: $OSTYPE"
+        exit 4
+    fi
+}
+
+
+clipboard "$@"

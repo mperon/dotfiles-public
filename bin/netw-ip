@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+req_progs=(curl cat json_pp iconv)
+for p in ${req_progs[@]}; do
+    hash "$p" 2>&- || \
+    { echo >&2 " Required program \"$p\" not installed."; exit 1; }
+done
+
+bcat() {
+    local _cmd=cat _bcat="-l javascript --theme=base16 --number --paging=never"
+    if hash batcat &>/dev/null; then
+        _cmd="batcat $_bcat"
+    elif hash bat &>/dev/null; then
+        _cmd="bat $_bcat"
+    fi
+    $_cmd
+}
+
+
+function urlencode() {
+    python3 -c 'import sys, urllib.parse as ulp; print(" ".join([ulp.quote(s) for s in sys.argv[1:]]))' \
+    "$@"
+}
+
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+for var in "$@"; do
+	IP=$(urlencode "$var")
+    printf "IP: ${RED}${var}${NC}\n"
+    curl -s "ip-api.com/json/$IP?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,offset,isp,org,as,mobile,proxy,hosting,query" \
+    | sed -e 'y/āáǎàçēéěèīíǐìōóǒòūúǔùǖǘǚǜüĀÁǍÀĒÉĚÈĪÍǏÌŌÓǑÒŪÚǓÙǕǗǙǛÜ/aaaaceeeeiiiioooouuuuuuuuuAAAAEEEEIIIIOOOOUUUUUUUUU/' \
+    | iconv -f utf8 -t ascii//TRANSLIT//IGNORE \
+    | json_pp \
+    | bcat
+done
+

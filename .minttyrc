@@ -1,0 +1,16 @@
+Font=JetBrainsMono NF
+FontHeight=13
+Columns=90
+Locale=C
+Charset=UTF-8
+CtrlShiftShortcuts=yes
+ThemeFile=mintty
+Transparency=low
+OpaqueWhenFocused=no
+CursorType=line
+FontSmoothing=full
+Language=en_US
+Printer=Microsoft Print to PDF
+ShowHiddenFonts=yes
+FontRender=uniscribe
+FontWeight=400

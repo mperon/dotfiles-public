@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+# load settings and os information
+source "${BASH_SOURCE%/*}/lib/bashFn.sh"
+
+S_OS=$(uname -s | cut -d"_" -f1 | head -n 1)
+
+#check if os is supported
+S_OSFN="${S_OS,,}"
+S_PATHS=
+S_SUBL=
+
+__main() {
+    local  s_act= s_tries=("__tryInPath" "__${S_OSFN}SublFinder")
+    for s_act in "${s_tries[@]}"; do
+        __debug "Trying $s_act"
+        function_exists "$s_act" && "$s_act" && break
+        __debug "Not Found."
+    done
+
+    if [[ -n "${S_SUBL// }" ]]; then
+        __info "Sublime Text Found At: ${S_SUBL}"
+        __info "Running.."
+
+        __run "$@"
+        return $?
+    else
+        __error "Sublime Text not found!"
+        return 4
+    fi
+
+}
+
+__run() {
+    if [[ "$ID" == "CYGWIN" ]]; then
+        #fix paths
+        local args=() cpath=
+        for a in "$@"; do
+            cpath="$a"
+            if [[ "${a:0:1}" != "-" ]]; then
+                cpath=$(cygpath -w "$a")
+            fi
+            args+=("$cpath")
+        done
+        "${S_SUBL}" "$args" &
+    else
+        "${S_SUBL}" "$@" &
+    fi
+}
+
+__tryCommand() {
+    local s_cmd=
+    s_cmd=$(command -v "$1" | head -n 1)
+    if [[ -n "${s_cmd// }" ]]; then
+        S_SUBL="${s_cmd}"
+
+        [[ ${S_SUBL} == "${BASH_SOURCE}" ]] && return 4
+        return 0
+    fi
+    return 4
+}
+
+__tryInPath() {
+    local names=("subl" "sublime_text" "sublime" "sublime_text.exe")
+    local _d=
+    local name=
+    while read -d ':' _d; do
+        for name in "${names[@]}"; do    
+            __debug "Searching in path: ${_d/%\//}/${name}"
+            if [[ -x "${_d/%\//}/${name}" ]]; then         
+                [[ "${_d/%\//}/${name}" == "${BASH_SOURCE}" ]] && continue
+                S_SUBL="${_d/%\//}/${name}"
+                return 0
+            fi
+        done
+    done <<< "$PATH:"
+    return 4
+}
+
+__cygwinSublFinder() {
+    local paths=("${PROGRAMFILES}\\" "${PROGRAMFILES} (x86)\\")
+    S_PATHS=()
+    for p in "${paths[@]}"; do
+        p=$(cygpath "${p}\Sublime Text 3\sublime_text.exe")
+        S_PATHS+=("${p}")
+    done
+    __search_subl
+    return $?
+}
+
+__darwinSublFinder() {
+    S_PATHS=(
+        "/usr/local/bin/sublime"
+        "/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl"
+        "$HOME/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl"
+    )
+    __search_subl
+    return $?
+
+}
+
+__linuxSublFinder() {
+    S_PATHS=(
+        "/snap/sublime-tex/current/opt/sublime_text"
+        "/snap/bin/subl"
+        "/usr/bin/subl"
+        "/usr/bin/sublime_text"
+        "/opt/sublime_text/sublime_text"
+        "/mnt/c/Program Files/Sublime Text/sublime_text.exe"
+        "/mnt/c/Program Files/Sublime Text/subl.exe"
+    )
+    __search_subl
+    return $?
+}
+
+__search_subl() {
+    for p in "${S_PATHS[@]}"; do
+        __debug "Searching in folders: ${p}"
+        [[ -x "$p" ]] && S_SUBL="$p" && return 0
+    done
+    return 4
+}
+
+
+__main "$@"

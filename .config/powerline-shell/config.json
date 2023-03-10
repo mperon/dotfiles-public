@@ -1,0 +1,20 @@
+{
+    "segments": [
+        ".config/powerline-shell/virtualenv.py",
+        "username",
+        "ssh",
+        "cwd",
+        "git",
+        "git_stash",
+        "hg",
+        "jobs",
+        "newline",
+        "root"
+    ],
+    "cwd": {
+        "max_depth": 2
+    },
+    "vcs": {
+        "show_symbol": true
+    }
+}

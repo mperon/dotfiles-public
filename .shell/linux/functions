@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+# vim: ts=4 sw=4 et ft=sh
+# To the extent possible under law, the author(s) have dedicated all
+# copyright and related and neighboring rights to this software to the
+# public domain worldwide. This software is distributed without any warranty.
+# You should have received a copy of the CC0 Public Domain Dedication along
+# with this software.
+# If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
+
+# base-files version 4.3-2
+
+# ~/.config/settings/ubuntu/.bash_functions: executed by bash(1) for interactive shells.
+
+################################
+# UBUNTU exclusive functions
+################################
+
+# Update all things
+update-linux() {
+    sudo apt update
+    sudo apt upgrade
+    sudo apt dist-upgrade
+    sudo apt autoremove
+    sudo apt autoclean
+}
+
+# reinstall application
+#   reinstall packagename
+reinstall() {
+    sudo apt purge "$@" && \
+        sudo apt install "$@"
+}
+
+#list installed packages. Filter with parameters
+#   installed [filter]
+installed() {
+    if [ -n "$1" ]; then
+        dpkg -l | grep ^ii | cut -d" " -f 3 | grep "$@"
+       #dpkg --get-selections | sed 's/\sinstall//g' | grep "$@"
+    else
+        #dpkg --get-selections | sed 's/\sinstall//g'
+        dpkg -l | grep ^ii | cut -d" " -f 3
+    fi
+}
+
+#unlock apt-get locked
+#   apt-unlock
+apt-unlock() {
+    apt-reset
+}
+
+#reset apt files and cache
+#   apt-reset
+apt-reset() {
+    sudo rm /var/lib/apt/lists/lock
+    sudo rm /var/cache/apt/archives/lock
+    sudo rm /var/lib/dpkg/lock
+    sudo rm -rf /var/lib/apt/lists/
+    sudo rm -rf /var/lib/apt/lists/partial/
+    sudo apt-get install -f
+    sudo dpkg --configure -a
+    sudo apt-get clean -y -q
+    sudo apt-get autoclean -y -q
+    sudo apt-get autoremove -y -q
+    sudo apt-get update -y -q
+}
+
+#add a key to apt-get
+#   apt-addkey HASH
+apt-addkey() {
+    gpg --keyserver keyserver.ubuntu.com --recv-keys --fingerprint $1 | gpg --export | sudo apt-key add -
+}
+
+#recreate font-cache
+#   mkfonts
+mkfonts() {
+    #fix font permissions
+    local fontf="$HOME/.local/share/fonts/"
+    rm -rf $HOME/.cache/fontconfig
+    sudo chown -R "${USER}.${USER}" "$fontf"
+    find "$fontf" -type f -exec sudo chmod 644 {} \;
+    find "$fontf" -type d -exec sudo chmod 755 {} \;
+    find "$fontf" -type d -exec mkfontscale {} \;
+    find "$fontf" -type d -exec mkfontdir {} \;
+    #/usr/share/fonts
+    sudo rm -rf /var/cache/fontconfig
+    find "/usr/share/fonts/" -type f -exec sudo chmod 644 {} \;
+    find "/usr/share/fonts/" -type d -exec sudo chmod 755 {} \;
+    find "/usr/share/fonts/" -type d -exec sudo mkfontscale {} \;
+    find "/usr/share/fonts/" -type d -exec sudo mkfontdir {} \;
+    sudo fc-cache -f -v -r "/usr/share/fonts/"
+}
+
+#simulates hackerism
+#   hacker
+hacker() {
+	cat /dev/urandom | hexdump -C | pv -qL 800
+}
+
+
+#Get total process memory
+#  totalProcMem [name]
+total-procmem() {
+    pids=$(pidof "$1")
+    for p in ${pids[@]}; do \
+        cat /proc/$p/status | grep -i vmrss | \
+        awk '{print $2}'; done | \
+        while read m; do let t=$t+$m; echo $t; done \
+        | echo "$(tail -n 1) kB"
+}
+
+# Open Visual Studio Code
+#  vscode
+vscode() {
+    run /usr/bin/code "$@"
+}
+
+#xxxxxxxxxxxxxxx
+#  xxxxx
+vbox-clone() {
+    /usr/bin/nice -n 15 -- /usr/bin/VBoxManage clonevdi "$@"
+}
+
+#xxxxxxxxxxxxxxx
+#  xxxxx
+vbox-uuid() {
+    /usr/bin/nice -n 15 -- /usr/bin/VBoxManage internalcommands sethduuid "$@"
+}
+
+
+#add user to samba
+#   smb-add  [username] [group]
+smb-add() {
+    if [[ -z "${1// }" ]]; then
+        echo "Usage: smb_add [username] [group] ..."
+        return 4
+    fi
+    if [[ -z "${2// }" ]]; then
+        echo "Usage: smb_add [username] [group] ..."
+        return 4
+    fi
+    sudo adduser --home /home/$1 --no-create-home --disabled-password --disabled-login --no-create-home --shell /usr/sbin/nologin --ingroup $2 $1
+    sudo smbpasswd -a $1
+}
+
+#change samba user password
+#   smb-pwd  [username]
+smb-pwd() {
+    if [[ -z "${1// }" ]]; then
+        echo "Usage: smb_pw [username] ..."
+        return 4
+    fi
+    sudo smbpasswd -e "$1"
+}
+
+#reload samba
+#   smb-reload
+smb-reload() {
+    sudo systemctl stop smbd.service
+    sudo systemctl stop nmbd.service
+    sudo systemctl start smbd.service
+    #sudo systemctl start nmbd.service
+}
+
+#fix samba folder
+#   smb-fixfolder [group] [directory]
+smb-fixfolder() {
+    if [[ -z "${1// }" ]]; then
+        echo "Usage: smb_pf [group] [directory] ..."
+        return 4
+    fi
+    if [[ -z "${2// }" ]] && [[ ! -d "$2" ]]; then
+        echo "Usage: smb_pf [group] [directory] ..."
+        return 4
+    fi
+    local group="$1"
+    local directory="$2"
+    sudo chmod 2770 "$directory"
+    sudo chgrp -R "$group" "$directory"
+}
+
+#Copy files using nautilus dialog
+na-copy() {
+    qdbus org.gnome.Nautilus /org/gnome/Nautilus \
+        org.gnome.Nautilus.FileOperations.CopyFile \
+        "file://$1" "*" \
+        "file://$2" ""
+}

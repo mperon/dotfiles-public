@@ -1,0 +1,16 @@
+{
+	"color_scheme": "Packages/Monokai JSON+/Monokai JSON+.tmTheme",
+	"font_face": "Monaco",
+	"font_options":
+	[
+		"subpixel_antialias"
+	],
+	"font_size": 14,
+	"ignored_packages":
+	[
+		"Vintage"
+	],
+	"theme": "Default.sublime-theme"
+    ,"http_proxy": "http://MPPeron:Pamela*1986@wsa-proxy02.mpsc.mp.br:3128",
+    "https_proxy": "http://MPPeron:Pamela*1986@wsa-proxy02.mpsc.mp.br:3128"
+}

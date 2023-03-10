@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+[[ $OSTYPE == darwin* ]] && g="g" || g=""
+
+
+exec 3>&2 2> >( tee /tmp/sample-$$.log | \
+                  ${g}sed -u 's/^.*$/now/' |
+                  ${g}date -f - +%s.%N >/tmp/sample-$$.tim)
+set -x
+
+"$@"
+
+set +x
+exec 2>&3 3>&-
+
+paste /tmp/sample-$$.{tim,log}

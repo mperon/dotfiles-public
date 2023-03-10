@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+
+
+usage() {
+    SCRIPT_NAME=$(basename $0)
+    [[ -n "$1" ]] && echo $1
+    cat <<EOF
+This script is an enhanced zip command line
+Usage: $SCRIPT_NAME [options]
+  -h|--help    Show this message.
+EOF
+    exit 1
+}
+
+# asking for help
+[[ $* == *" --help"* ||  $* == *" -h"* ]] && usage
+[[  $# -le 0 ]] && usage
+echo "oi"
+ZIP_NAME=
+
+# se eh uma pasta
+if [[ "$1" == *".zip" ]]; then
+    ZIP_NAME="$1"
+    shift
+fi
+
+FILE="${1/%\//}"
+shift
+
+
+if [[ -z "$ZIP_NAME" ]]; then
+    if [[ -d "$FILE" ]]; then
+        ZIP_NAME="${FILE/%\//}.zip"
+    elif [[ -f "$FILE" ]]; then
+        FILE_BASE="${FILE##*/}"
+        ZIP_NAME="${FILE_BASE%%.*}"
+    else
+        usage "ERROR: you must inform a folder or a file to zip..."
+    fi
+fi
+
+# is not a file nor a folder
+[[ ! -d "$FILE" ]] && [[ ! -f "$FILE" ]] && usage "ERROR: you must inform a folder or a file to zip..."
+[[ -d "$FILE" ]] && FILE="${FILE/%\//}/"
+
+
+# execute correct
+echo \
+/usr/bin/zip \
+    -x '*.DS_Store' \
+    -x '*__MACOSX*' \
+    -x '*.AppleDouble*' \
+    -x '._*' \
+    -r "$ZIP_NAME" \
+    $FILE "$@"

@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+# Tries to locate javafx folder an run java with-it
+#   javafx java command line
+
+[[ -z "${JAVA_FX_PATH// }" ]] && [[ -f $HOME/.config/profile.d/999-javafx.sh ]] \
+    && source $HOME/.config/profile.d/999-javafx.sh
+
+_paths=("$JAVA_FX_PATH" "$HOME/Library/JavaFx" "/opt/javafx-sdk-11.0.2" "/usr/lib/jvm/java-8-openjdk-amd64/jre/")
+_lib=
+for _p in "${_paths[@]}"; do
+    [[ -z "${_p// }" || ! -d "$_p" ]] && continue
+    _lib="${_p}/lib"
+    break
+done
+
+[[ -z "${_p// }" || ! -d "$_p" ]] && echo "ERRO: Impossivel encontrar o javafx" \
+    && echo "Instale com o comando $ inst javafx"
+
+java --module-path "$_lib" \
+    --add-modules=javafx.controls,javafx.fxml,javafx.graphics,javafx.media,javafx.swing,javafx.web \
+    "$@"

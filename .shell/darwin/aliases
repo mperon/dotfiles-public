@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+# To the extent possible under law, the author(s) have dedicated all
+# copyright and related and neighboring rights to this software to the
+# public domain worldwide. This software is distributed without any warranty.
+# You should have received a copy of the CC0 Public Domain Dedication along
+# with this software.
+# If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
+
+# base-files version 4.3-2
+
+# ~/.config/settings/ubuntu/.myaliases: executed by bash(1) for interactive shells.
+
+################################
+# MacOS exclusive functions
+################################
+if cmd_exists hash; then
+    hash -d apps=$A
+    hash -d library=$L
+    hash -d videos=$V
+    hash -d icloud=$C
+fi
+
+# use gls if exists
+if [[ -f $HOMEBREW_PREFIX/bin/gls ]]; then
+    alias ls="$HOMEBREW_PREFIX/bin/gls -hFN --group-directories-first --color=auto"
+    [[ -f $HOMEBREW_PREFIX/bin/ggrep ]] && alias grep='$HOMEBREW_PREFIX/bin/ggrep --color=auto'
+    [[ -f $HOMEBREW_PREFIX/bin/gfgrep ]] && alias fgrep='$HOMEBREW_PREFIX/bin/gfgrep --color=auto'
+    [[ -f $HOMEBREW_PREFIX/bin/gegrep ]] && alias egrep='$HOMEBREW_PREFIX/bin/gegrep --color=auto'
+
+    # if has gdircolors, use-it
+    [[ -f $HOMEBREW_PREFIX/bin/gdircolors ]] && [[ -f "$HOME/.config/dircolors/darwin.colors" ]] \
+        && eval $($HOMEBREW_PREFIX/bin/gdircolors "$HOME/.config/dircolors/darwin.colors")
+else
+    # no fancy ls, use default
+    export CLICOLORS=1
+    export LSCOLORS='BxBxhxDxfxhxhxhxhxcxcx'
+    alias ls="/bin/ls -G"
+    unalias grep fgrep egrep > /dev/null 2>&1
+fi
+
+# shortcuts
+alias applications="cd $A"
+alias library="cd $L"
+alias videos="cd $V"
+alias icloud="cd $C"
+
+#MACOS SHORTCUTS
+alias install='brew install'
+alias update='brew update'
+alias autoremove='brew remove'
+alias upgrade='brew upgrade'
+alias dist-upgrade='brew upgrade'
+alias remove='brew remove'
+alias purge='brew remove'
+alias install-casks='brew update && brew upgrade --casks --greedy && brew clean'
+
+# mac clean will be a shell script
+alias clean='brew clean; gem cleanup'
+#alias search='brew search'
+
+#outras funcoes
+# FIX: is bogous on ex_fat
+#if cmd_exists rsync; then
+#    alias cp='rsync -ah --partial --inplace --info=progress2'
+#fi
+
+# programming xcode
+alias ios="open /Applications/Xcode.app/Contents/Developer/Applications/Simulator.app"
+alias watchos="open /Applications/Xcode.app/Contents/Developer/Applications/Simulator\ \(Watch\).app"
+
+# Canonical hex dump; some systems have this symlinked
+cmd_exists hd || alias hd="hexdump -C"
+cmd_exists md5sum || alias md5sum="md5"
+cmd_exists sha1sum || alias sha1sum="shasum"
+cmd_exists gfind && alias find="gfind"
+
+#clear
+alias cls='clear'
+alias dir='ls'
+
+# Empty the Trash on all mounted volumes and the main HDD.
+# Also, clear Apple’s System Logs to improve shell startup speed.
+# Finally, clear download history from quarantine. https://mths.be/bum
+alias empty-trash="sudo rm -rfv /Volumes/*/.Trashes; sudo rm -rfv ~/.Trash; sudo rm -rfv /private/var/log/asl/*.asl; sqlite3 ~/Library/Preferences/com.apple.LaunchServices.QuarantineEventsV* 'delete from LSQuarantineEvent'"
+
+# removes an app from quarantine
+alias remove-quarantine="sudo xattr -r -d com.apple.quarantine"
+
+# Show/hide hidden files in Finder
+alias fshow="defaults write com.apple.finder AppleShowAllFiles -bool true && killall Finder"
+alias fhide="defaults write com.apple.finder AppleShowAllFiles -bool false && killall Finder"
+
+# Disable Spotlight
+alias spotoff="sudo mdutil -a -i off"
+
+# Enable Spotlight
+alias spoton="sudo mdutil -a -i on"
+
+# preview a file using QuickLook
+alias ql="qlmanage -p 2>/dev/null"
+
+# Kill all the tabs in Chrome to free up memory
+# [C] explained: http://www.commandlinefu.com/commands/view/402/exclude-grep-from-your-grepped-output-of-ps-alias-included-in-description
+alias chrome-kill='ps ux | grep -E "(Chrome|WhatsApp) Helper \(Renderer\) --type=renderer" | grep -v extension-process | tr -s " " | cut -d " " -f2 | xargs kill'
+
+# Lock the screen (when going AFK)
+alias afk="/System/Library/CoreServices/Menu\ Extras/User.menu/Contents/Resources/CGSession -suspend"
+
+# Google Chrome
+alias chrome='/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome'
+
+alias recreate-icons='defaults write com.apple.dock ResetLaunchPad -bool true && /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister -kill -r -domain local -domain system -domain user && killall Dock && killall Finder'
+
+# PlistBuddy alias, because sometimes "defaults" just doesn’t cut it
+alias plistbuddy="/usr/libexec/PlistBuddy"
+
+# brew cask shortcut
+alias cask="brew --cask"
+
+## NETWORKING STUFF
+# Flush DNS
+alias flushdns="dscacheutil -flushcache && killall -HUP mDNSResponder"
+alias open-ports="sudo lsof -i -P | grep LISTEN"
+
+
+#   cpuHogs:  Find CPU hogs
+#   -----------------------------------------------------
+alias cpu-hogs='ps wwaxr -o pid,%cpu,time,command | head -10'
+
+
+#   ttop:  Recommended 'top' invocation to minimize resources
+#   ------------------------------------------------------------
+#       Taken from this macosxhints article
+#       http://www.macosxhints.com/article.php?story=20060816123853639
+#   ------------------------------------------------------------
+alias ttop="top -R -F -s 10 -o rsize"
+
+#programming
+alias fix-spotlight='find . -type d -name "node_modules" -exec touch "{}/.metadata_never_index" \;'
+
+# lock
+alias poopin='/System/Library/CoreServices/Menu\ Extras/User.menu/Contents/Resources/CGSession -suspend'

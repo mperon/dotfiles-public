@@ -1,0 +1,6 @@
+#compdef update-all ua reload keygen-list init-node-npm
+# -*- mode: bash -*-
+
+_message "no argument required"
+
+return 1

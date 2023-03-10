@@ -1,0 +1,7 @@
+#!/bin/bash
+
+SOURCE="$1"
+DEST="$2"
+
+convert "$SOURCE" "${DEST}.png"
+convert "${DEST}.png" -fuzz 25% -transparent white -brightness-contrast -15x10 "${DEST}1.png"

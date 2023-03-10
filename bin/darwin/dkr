@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+
+dkr () 
+{
+  IP=$(ifconfig en0 | grep inet | awk '$1=="inet" {print $2}')
+  DIR=$(pwd)
+
+  IPED_TMP=$(mktemp -d)
+
+ # xhost +$IP
+  docker run --rm -it  \
+    -e TZ="Brazil/East" -e iped_locale="pt-BR" \
+    -e iped_enableOCR="true" \
+    -e iped_enableNamedEntityRecogniton="true" \
+    -e iped_enableAudioTranscription="false" \
+    -e DISPLAY=$IP:0  \
+    -e XAUTHORITY=/.Xauthority  \
+    -e GDK_BACKEND \
+    -e GDK_SCALE \
+    -e QT_DEVICE_PIXEL_RATIO \
+    -e LANG=C.UTF-8 \
+    -e LC_ALL=C.UTF-8 \
+    -e NO_AT_BRIDGE=1 \
+    --net host  \
+    -v "$DIR":"$DIR":Z \
+    -v /tmp/.X11-unix:/tmp/.X11-unix \
+    -v ~/.Xauthority:/.Xauthority \
+    -v "$IPED_TMP":/mnt/ipedtmp \
+    "$@"
+}
+
+CDIR=$(pwd)
+
+# dkr -v $CDIR/evidences:/evidences \
+#     ipeddocker/iped:processor java -jar iped.jar --nogui \
+#     -d /evidences/vapor-lacre12798-jussara-iPhone.ufdr \
+#     -o /evidences/iped-output
+
+#IPED docker (Analysing)
+#dkr -v /mnt/evidences:/evidences \
+#  ipeddocker/iped java -jar \ 
+#  /evidences/test/iped-output/indexador/lib/iped-search-app.jar 
+
+
+# sudo docker run -v /mnt/evidences:/evidences \ 
+#                  -v /mnt/ipedtmp:/mnt/ipedtmp \
+#                  -v /mnt/optional_jars:/root/IPED/optional_jars \
+#                  -v /mnt/led/:/mnt/led \
+#                  -v /mnt/ipedtmp:/mnt/ipedtmp \
+#                  -v /mnt/PhotoDNA:/mnt/PhotoDNA \
+#                  -v /mnt/kff:/mnt/kff \
+#                    ipeddocker/iped:processor java -jar iped.jar --nogui \
+#                  -d /evidences/test/test.dd \
+#                  -o /evidences/test/iped-output 
+
+export IPED_PATH=$1
+
+mkdir -p ${IPED_PATH}/{evidences,ipedtmp,plugins,hashesdb} \
+    ${IPED_PATH}/evidences/{input,output}
+
+docker run --rm -it \
+    -v ${IPED_PATH}/evidences:/evidences \
+    -v ${IPED_PATH}/ipedtmp:/mnt/ipedtmp \
+    -v ${IPED_PATH}/plugins:/mnt/plugins \
+    -v ${IPED_PATH}/hashesdb:/mnt/hashesdb \
+    mperon/iped-processor:latest \
+    java -jar iped.jar -Xms512m -Xmx4000m --nogui \
+    -d /evidences/input \
+    -o /evidences/output
+

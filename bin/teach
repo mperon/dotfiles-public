@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+# show source code of a program
+# teach program
+_teach() {
+    local _type=$(type $1)
+
+    case "$_type" in
+        "$1 not found")
+            echo "$1 is not defined or doesnt exists!!"
+            ;;
+        "$1 is a shell function from"*)
+            echo "$_type"
+            echo "source code:"
+            local _fname=$(echo "$_type" | awk -F'is a shell function from ' '{print $2}')
+            local _lno=$(cat "$_fname" | grep -n "${1}() {" | cut -d":" -f1 | head -n1)
+            local _lnum=$(declare -f -a $1 | wc -l)
+            local _lto=$(( $_lno + $_lnum ))
+            _lno=$(( $_lno - 3 ))
+            batcat --style=numbers,grid "$_fname" -r "${_lno}:${_lto}"
+            ;;
+        "$1 is an alias for"*)
+            echo "$1 is a alias:"
+            echo "$_type" | awk -F'is an alias for ' '{print $2}' | batcat -l sh --style=numbers,grid
+            ;;
+        "$1 is "*)
+            echo "$_type"
+            local _fname=$(echo "$_type" | awk -F ' is ' '{print $2}')
+            batcat --style=numbers,grid "$_fname"
+            ;;
+    *)
+    echo -n "unknown"
+    ;;
+    esac
+}
+
+
+_teach "$@"

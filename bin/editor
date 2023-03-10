@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=bash
+
+S_EDITOR=
+S_CONVERT_PATHS=
+
+DARWIN_GUI_EDITORS=(
+    "/usr/local/bin/sublime"
+    "/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl"
+    "$HOME/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl"
+)
+DARWIN_TERM_EDITORS=(
+    "vim"
+    "nano"
+)
+LINUX_GUI_EDITORS=(
+    "/snap/sublime-tex/current/opt/sublime_text"
+    "/snap/bin/subl"
+    "/usr/bin/subl"
+    "/usr/bin/sublime_text"
+    "/opt/sublime_text/sublime_text"
+    "/mnt/c/Program Files/Sublime Text/sublime_text.exe"
+    "/mnt/c/Program Files/Sublime Text/subl.exe"
+)
+
+LINUX_TERM_EDITORS=(
+    "vim"
+    "nano"
+)
+
+CYGWIN_GUI_EDITORS=(
+    "${PROGRAMFILES}\\Sublime Text 3\\sublime_text.exe"
+    "${PROGRAMFILES} (x86)\\Sublime Text 3\\sublime_text.exe"
+)
+CYGWIN_TERM_EDITORS=(
+    "vim"
+    "nano"
+)
+
+main() {
+    local only_show= args=()
+    if [[ "$1" == "--info" ]] || [[ "$1" == "-i" ]]; then
+        # only show wich editor will be called
+        only_show=y
+        shift
+    fi
+    if [[ "$1" == "--sudo" ]] || [[ "$1" == "-s" ]]; then
+        # only show wich editor will be called
+        run_sudo="sudo "
+        shift
+    fi
+
+    # search for editor
+    choose_editor
+    if [[ $? -ne 0 ]]; then
+        # Error! Something went wrong!
+        return 4
+    fi
+
+    # only show editor that will be launched
+    [[ -n "${only_show}" ]] && echo "$S_EDITOR" && return 0
+
+    # if is cygwin convert paths to windows
+    if [[ -n "$S_CONVERT_PATHS" ]]; then
+        local a= cpath=
+        for a in "$@"; do
+            cpath="$a"
+            if [[ "${a:0:1}" != "-" ]]; then
+                cpath=$(cygpath -w "$a")
+            fi
+            args+=("$cpath")
+        done
+    else
+        args=("$@")
+    fi
+
+    # run command
+    $run_sudo "$S_EDITOR" "${args[@]}" &
+}
+
+
+choose_editor() {
+    case $(uname -s | tr '[:upper:]' '[:lower:]') in
+        darwin*)
+            [[ -z "$SSH_TTY" ]] && find_in "${DARWIN_GUI_EDITORS[@]}"
+            [[ -n "$SSH_TTY" ]] && find_in "${DARWIN_TERM_EDITORS[@]}"
+            return 0;;
+        linux*)
+            [[ -z "$SSH_TTY" ]] && find_in "${LINUX_GUI_EDITORS[@]}"
+            [[ -n "$SSH_TTY" ]] && find_in "${LINUX_TERM_EDITORS[@]}"
+            return 0;;
+        cygwin*)
+            [[ -z "$SSH_TTY" ]] && S_CONVERT_PATHS=y && find_in "${CYGWIN_GUI_EDITORS[@]}"
+            [[ -n "$SSH_TTY" ]] && find_in "${CYGWIN_TERM_EDITORS[@]}"
+            return 0;;
+        *)
+            echo "System not supported!!!"
+            return 4;;
+    esac
+}
+
+find_in() {
+    for p in "$@"; do
+        [[ -n "$S_CONVERT_PATHS" ]] && p=$(cygpath "$p")
+        [[ -x "$p" ]] && S_EDITOR="$p" && return 0
+    done
+    S_EDITOR=
+    echo "Editor not found!"
+    return 4
+}
+
+
+main "$@"

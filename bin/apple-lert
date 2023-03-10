@@ -1,0 +1,1042 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+#global variables
+E_PASSPHRASE= E_DOWNLOAD_ONLY= E_FILES= E_OPEN_FOLDER= E_DECRYPT_ONLY=
+E_IGNORE_HASH= E_FORCE_CHECKSUM= E_TEMP_DIR= E_RESUME=y E_EXTRACT_DIR=
+E_VERSION=1.4.2
+CHECKSUM_DB=
+TOTAL_FILES=0 FILE_COUNT=0
+DOWNLOAD_OK=0 UNZIP_OK=0 DECRYPT_OK=0
+DOWNLOAD_FAIL=0 DECRYPT_FAIL=0 UNZIP_FAIL=0
+INTREGRITY_OK=0 INTREGRITY_FAIL=0
+ERR_FILE_PATH=
+RESUME_FILE_PATH=
+
+check_prerequisites() {
+  # Checking pre-requisites
+  all_ok=true
+
+  if ! which gpg >/dev/null
+  then
+      echo "GPG is not installed. Please refer Apple Bash Script Instructions"
+      all_ok=false
+
+  fi
+
+  #ensures gpg folders
+  [[ -n "$XDG_DATA_HOME" ]] && mkdir -p "$XDG_DATA_HOME/gnupg"
+  chown $(whoami) $XDG_DATA_HOME/gnupg
+  chmod 700 $XDG_DATA_HOME/gnupg
+  chmod 600 $XDG_DATA_HOME/gnupg/*
+
+  if ! which curl >/dev/null; then
+      echo "CURL is not installed. Please refer Apple Bash Script Instructions"
+      all_ok=false
+  fi
+
+if ! which 7z >/dev/null; then
+  echo "P7ZIP is not installed. Please refer Apple Bash Script Instructions"
+  all_ok=false
+fi
+
+  if [ $all_ok = false ]
+  then
+       echo "Prerequisite check failed"
+       echo "Install:"
+       echo "   gpg     "
+       echo "   curl    "
+       echo "   7z      "
+       exit 2
+  fi
+  #Not checking pre-requisite bash since this script will not run without that!
+}
+
+pgetopt() {
+  # pure-getopt, a drop-in replacement for GNU getopt in pure Bash.
+  # version 1.4.3
+  #
+  # Copyright 2012-2018 Aron Griffis <aron@scampersand.com>
+  #
+  # Permission is hereby granted, free of charge, to any person obtaining
+  # a copy of this software and associated documentation files (the
+  # "Software"), to deal in the Software without restriction, including
+  # without limitation the rights to use, copy, modify, merge, publish,
+  # distribute, sublicense, and/or sell copies of the Software, and to
+  # permit persons to whom the Software is furnished to do so, subject to
+  # the following conditions:
+  #
+  # The above copyright notice and this permission notice shall be included
+  # in all copies or substantial portions of the Software.
+  #
+  # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+  # OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  # MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+  # IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+  # CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+  # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+  # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+  _getopt_main() {
+    # Returns one of the following statuses:
+    #   0 success
+    #   1 error parsing parameters
+    #   2 error in getopt invocation
+    #   3 internal error
+    #   4 reserved for -T
+    #
+    # For statuses 0 and 1, generates normalized and shell-quoted
+    # "options -- parameters" on stdout.
+
+    declare parsed status
+    declare short long name flags
+    declare have_short=false
+
+    # Synopsis from getopt man-page:
+    #
+    #   getopt optstring parameters
+    #   getopt [options] [--] optstring parameters
+    #   getopt [options] -o|--options optstring [options] [--] parameters
+    #
+    # The first form can be normalized to the third form which
+    # _getopt_parse() understands. The second form can be recognized after
+    # first parse when $short hasn't been set.
+
+    if [[ -n ${GETOPT_COMPATIBLE+isset} || $1 == [^-]* ]]; then
+      # Enable compatibility mode
+      flags=c$flags
+      # Normalize first to third synopsis form
+      set -- -o "$1" -- "${@:2}"
+    fi
+
+    # First parse always uses flags=p since getopt always parses its own
+    # arguments effectively in this mode.
+    parsed=$(_getopt_parse getopt ahl:n:o:qQs:TuV \
+      alternative,help,longoptions:,name:,options:,quiet,quiet-output,shell:,test,version \
+      p "$@")
+    status=$?
+    if [[ $status != 0 ]]; then
+      if [[ $status == 1 ]]; then
+        echo "Try \`getopt --help' for more information." >&2
+        # Since this is the first parse, convert status 1 to 2
+        status=2
+      fi
+      return $status
+    fi
+    eval "set -- $parsed"
+
+    while [[ $# -gt 0 ]]; do
+      case $1 in
+        (-a|--alternative)
+          flags=a$flags ;;
+
+        (-h|--help)
+          _getopt_help
+          return 2  # as does GNU getopt
+          ;;
+
+        (-l|--longoptions)
+          long="$long${long:+,}$2"
+          shift ;;
+
+        (-n|--name)
+          name=$2
+          shift ;;
+
+        (-o|--options)
+          short=$2
+          have_short=true
+          shift ;;
+
+        (-q|--quiet)
+          flags=q$flags ;;
+
+        (-Q|--quiet-output)
+          flags=Q$flags ;;
+
+        (-s|--shell)
+          case $2 in
+            (sh|bash)
+              flags=${flags//t/} ;;
+            (csh|tcsh)
+              flags=t$flags ;;
+            (*)
+              echo 'getopt: unknown shell after -s or --shell argument' >&2
+              echo "Try \`getopt --help' for more information." >&2
+              return 2 ;;
+          esac
+          shift ;;
+
+        (-u|--unquoted)
+          flags=u$flags ;;
+
+        (-T|--test)
+          return 4 ;;
+
+        (-V|--version)
+          echo "pure-getopt 1.4.3"
+          return 0 ;;
+
+        (--)
+          shift
+          break ;;
+      esac
+
+      shift
+    done
+
+    if ! $have_short; then
+      # $short was declared but never set, not even to an empty string.
+      # This implies the second form in the synopsis.
+      if [[ $# == 0 ]]; then
+        echo 'getopt: missing optstring argument' >&2
+        echo "Try \`getopt --help' for more information." >&2
+        return 2
+      fi
+      short=$1
+      have_short=true
+      shift
+    fi
+
+    if [[ $short == -* ]]; then
+      # Leading dash means generate output in place rather than reordering,
+      # unless we're already in compatibility mode.
+      [[ $flags == *c* ]] || flags=i$flags
+      short=${short#?}
+    elif [[ $short == +* ]]; then
+      # Leading plus means POSIXLY_CORRECT, unless we're already in
+      # compatibility mode.
+      [[ $flags == *c* ]] || flags=p$flags
+      short=${short#?}
+    fi
+
+    # This should fire if POSIXLY_CORRECT is in the environment, even if
+    # it's an empty string.  That's the difference between :+ and +
+    flags=${POSIXLY_CORRECT+p}$flags
+
+    _getopt_parse "${name:-getopt}" "$short" "$long" "$flags" "$@"
+  }
+
+  _getopt_parse() {
+    # Inner getopt parser, used for both first parse and second parse.
+    # Returns 0 for success, 1 for error parsing, 3 for internal error.
+    # In the case of status 1, still generates stdout with whatever could
+    # be parsed.
+    #
+    # $flags is a string of characters with the following meanings:
+    #   a - alternative parsing mode
+    #   c - GETOPT_COMPATIBLE
+    #   i - generate output in place rather than reordering
+    #   p - POSIXLY_CORRECT
+    #   q - disable error reporting
+    #   Q - disable normal output
+    #   t - quote for csh/tcsh
+    #   u - unquoted output
+
+    declare name="$1" short="$2" long="$3" flags="$4"
+    shift 4
+
+    # Split $long on commas, prepend double-dashes, strip colons;
+    # for use with _getopt_resolve_abbrev
+    declare -a longarr
+    _getopt_split longarr "$long"
+    longarr=( "${longarr[@]/#/--}" )
+    longarr=( "${longarr[@]%:}" )
+    longarr=( "${longarr[@]%:}" )
+
+    # Parse and collect options and parameters
+    declare -a opts params
+    declare o alt_recycled=false error=0
+
+    while [[ $# -gt 0 ]]; do
+      case $1 in
+        (--)
+          params=( "${params[@]}" "${@:2}" )
+          break ;;
+
+        (--*=*)
+          o=${1%%=*}
+          if ! o=$(_getopt_resolve_abbrev "$o" "${longarr[@]}"); then
+            error=1
+          elif [[ ,"$long", == *,"${o#--}"::,* ]]; then
+            opts=( "${opts[@]}" "$o" "${1#*=}" )
+          elif [[ ,"$long", == *,"${o#--}":,* ]]; then
+            opts=( "${opts[@]}" "$o" "${1#*=}" )
+          elif [[ ,"$long", == *,"${o#--}",* ]]; then
+            if $alt_recycled; then o=${o#-}; fi
+            _getopt_err "$name: option '$o' doesn't allow an argument"
+            error=1
+          else
+            echo "getopt: assertion failed (1)" >&2
+            return 3
+          fi
+          alt_recycled=false
+          ;;
+
+        (--?*)
+          o=$1
+          if ! o=$(_getopt_resolve_abbrev "$o" "${longarr[@]}"); then
+            error=1
+          elif [[ ,"$long", == *,"${o#--}",* ]]; then
+            opts=( "${opts[@]}" "$o" )
+          elif [[ ,"$long", == *,"${o#--}::",* ]]; then
+            opts=( "${opts[@]}" "$o" '' )
+          elif [[ ,"$long", == *,"${o#--}:",* ]]; then
+            if [[ $# -ge 2 ]]; then
+              shift
+              opts=( "${opts[@]}" "$o" "$1" )
+            else
+              if $alt_recycled; then o=${o#-}; fi
+              _getopt_err "$name: option '$o' requires an argument"
+              error=1
+            fi
+          else
+            echo "getopt: assertion failed (2)" >&2
+            return 3
+          fi
+          alt_recycled=false
+          ;;
+
+        (-*)
+          if [[ $flags == *a* ]]; then
+            # Alternative parsing mode!
+            # Try to handle as a long option if any of the following apply:
+            #  1. There's an equals sign in the mix -x=3 or -xy=3
+            #  2. There's 2+ letters and an abbreviated long match -xy
+            #  3. There's a single letter and an exact long match
+            #  4. There's a single letter and no short match
+            o=${1::2} # temp for testing #4
+            if [[ $1 == *=* || $1 == -?? || \
+                  ,$long, == *,"${1#-}"[:,]* || \
+                  ,$short, != *,"${o#-}"[:,]* ]]; then
+              o=$(_getopt_resolve_abbrev "${1%%=*}" "${longarr[@]}" 2>/dev/null)
+              case $? in
+                (0)
+                  # Unambiguous match. Let the long options parser handle
+                  # it, with a flag to get the right error message.
+                  set -- "-$1" "${@:2}"
+                  alt_recycled=true
+                  continue ;;
+                (1)
+                  # Ambiguous match, generate error and continue.
+                  _getopt_resolve_abbrev "${1%%=*}" "${longarr[@]}" >/dev/null
+                  error=1
+                  shift
+                  continue ;;
+                (2)
+                  # No match, fall through to single-character check.
+                  true ;;
+                (*)
+                  echo "getopt: assertion failed (3)" >&2
+                  return 3 ;;
+              esac
+            fi
+          fi
+
+          o=${1::2}
+          if [[ "$short" == *"${o#-}"::* ]]; then
+            if [[ ${#1} -gt 2 ]]; then
+              opts=( "${opts[@]}" "$o" "${1:2}" )
+            else
+              opts=( "${opts[@]}" "$o" '' )
+            fi
+          elif [[ "$short" == *"${o#-}":* ]]; then
+            if [[ ${#1} -gt 2 ]]; then
+              opts=( "${opts[@]}" "$o" "${1:2}" )
+            elif [[ $# -ge 2 ]]; then
+              shift
+              opts=( "${opts[@]}" "$o" "$1" )
+            else
+              _getopt_err "$name: option requires an argument -- '${o#-}'"
+              error=1
+            fi
+          elif [[ "$short" == *"${o#-}"* ]]; then
+            opts=( "${opts[@]}" "$o" )
+            if [[ ${#1} -gt 2 ]]; then
+              set -- "$o" "-${1:2}" "${@:2}"
+            fi
+          else
+            if [[ $flags == *a* ]]; then
+              # Alternative parsing mode! Report on the entire failed
+              # option. GNU includes =value but we omit it for sanity with
+              # very long values.
+              _getopt_err "$name: unrecognized option '${1%%=*}'"
+            else
+              _getopt_err "$name: invalid option -- '${o#-}'"
+              if [[ ${#1} -gt 2 ]]; then
+                set -- "$o" "-${1:2}" "${@:2}"
+              fi
+            fi
+            error=1
+          fi ;;
+
+        (*)
+          # GNU getopt in-place mode (leading dash on short options)
+          # overrides POSIXLY_CORRECT
+          if [[ $flags == *i* ]]; then
+            opts=( "${opts[@]}" "$1" )
+          elif [[ $flags == *p* ]]; then
+            params=( "${params[@]}" "$@" )
+            break
+          else
+            params=( "${params[@]}" "$1" )
+          fi
+      esac
+
+      shift
+    done
+
+    if [[ $flags == *Q* ]]; then
+      true  # generate no output
+    else
+      echo -n ' '
+      if [[ $flags == *[cu]* ]]; then
+        printf '%s -- %s' "${opts[*]}" "${params[*]}"
+      else
+        if [[ $flags == *t* ]]; then
+          _getopt_quote_csh "${opts[@]}" -- "${params[@]}"
+        else
+          _getopt_quote "${opts[@]}" -- "${params[@]}"
+        fi
+      fi
+      echo
+    fi
+
+    return $error
+  }
+
+  _getopt_err() {
+    if [[ $flags != *q* ]]; then
+      printf '%s\n' "$1" >&2
+    fi
+  }
+
+  _getopt_resolve_abbrev() {
+    # Resolves an abbrevation from a list of possibilities.
+    # If the abbreviation is unambiguous, echoes the expansion on stdout
+    # and returns 0.  If the abbreviation is ambiguous, prints a message on
+    # stderr and returns 1. (For first parse this should convert to exit
+    # status 2.)  If there is no match at all, prints a message on stderr
+    # and returns 2.
+    declare a q="$1"
+    declare -a matches
+    shift
+    for a; do
+      if [[ $q == "$a" ]]; then
+        # Exact match. Squash any other partial matches.
+        matches=( "$a" )
+        break
+      elif [[ $flags == *a* && $q == -[^-]* && $a == -"$q" ]]; then
+        # Exact alternative match. Squash any other partial matches.
+        matches=( "$a" )
+        break
+      elif [[ $a == "$q"* ]]; then
+        # Abbreviated match.
+        matches=( "${matches[@]}" "$a" )
+      elif [[ $flags == *a* && $q == -[^-]* && $a == -"$q"* ]]; then
+        # Abbreviated alternative match.
+        matches=( "${matches[@]}" "${a#-}" )
+      fi
+    done
+    case ${#matches[@]} in
+      (0)
+        [[ $flags == *q* ]] || \
+        printf "$name: unrecognized option %s\\n" >&2 \
+          "$(_getopt_quote "$q")"
+        return 2 ;;
+      (1)
+        printf '%s' "${matches[0]}"; return 0 ;;
+      (*)
+        [[ $flags == *q* ]] || \
+        printf "$name: option %s is ambiguous; possibilities: %s\\n" >&2 \
+          "$(_getopt_quote "$q")" "$(_getopt_quote "${matches[@]}")"
+        return 1 ;;
+    esac
+  }
+
+  _getopt_split() {
+    # Splits $2 at commas to build array specified by $1
+    declare IFS=,
+    eval "$1=( \$2 )"
+  }
+
+  _getopt_quote() {
+    # Quotes arguments with single quotes, escaping inner single quotes
+    declare s space q=\'
+    for s; do
+      printf "$space'%s'" "${s//$q/$q\\$q$q}"
+      space=' '
+    done
+  }
+
+  _getopt_quote_csh() {
+    # Quotes arguments with single quotes, escaping inner single quotes,
+    # bangs, backslashes and newlines
+    declare s i c space
+    for s; do
+      echo -n "$space'"
+      for ((i=0; i<${#s}; i++)); do
+        c=${s:i:1}
+        case $c in
+          (\\|\'|!)
+            echo -n "'\\$c'" ;;
+          ($'\n')
+            echo -n "\\$c" ;;
+          (*)
+            echo -n "$c" ;;
+        esac
+      done
+      echo -n \'
+      space=' '
+    done
+  }
+
+  _getopt_help() {
+    cat <<-EOT >&2
+
+  Usage:
+   getopt <optstring> <parameters>
+   getopt [options] [--] <optstring> <parameters>
+   getopt [options] -o|--options <optstring> [options] [--] <parameters>
+
+  Parse command options.
+
+  Options:
+   -a, --alternative             allow long options starting with single -
+   -l, --longoptions <longopts>  the long options to be recognized
+   -n, --name <progname>         the name under which errors are reported
+   -o, --options <optstring>     the short options to be recognized
+   -q, --quiet                   disable error reporting by getopt(3)
+   -Q, --quiet-output            no normal output
+   -s, --shell <shell>           set quoting conventions to those of <shell>
+   -T, --test                    test for getopt(1) version
+   -u, --unquoted                do not quote the output
+
+   -h, --help     display this help and exit
+   -V, --version  output version information and exit
+
+  For more details see getopt(1).
+EOT
+  }
+
+  _getopt_version_check() {
+    if [[ -z $BASH_VERSION ]]; then
+      echo "getopt: unknown version of bash might not be compatible" >&2
+      return 1
+    fi
+
+    # This is a lexical comparison that should be sufficient forever.
+    if [[ $BASH_VERSION < 2.05b ]]; then
+      echo "getopt: bash $BASH_VERSION might not be compatible" >&2
+      return 1
+    fi
+
+    return 0
+  }
+
+  _getopt_version_check
+  _getopt_main "$@"
+  declare status=$?
+  unset -f _getopt_main _getopt_err _getopt_parse _getopt_quote \
+    _getopt_quote_csh _getopt_resolve_abbrev _getopt_split _getopt_help \
+    _getopt_version_check
+  return $status
+}
+
+# creates a progress bar
+function progress_bar() {
+    # Process data
+    let _progress=(${1}*100/${2}*100)/100
+    let _done=(${_progress}*5)/10
+    let _left=50-$_done
+    # Build progressbar string lengths
+    _done=$(printf "%${_done}s")
+    _left=$(printf "%${_left}s")
+
+    # 1.2 Build progressbar strings and print the ProgressBar line
+    # 1.2.1 Output example:
+    # 1.2.1.1 Progress : [########################################] 100%
+    printf "\rProgress : [${_done// /\#}${_left// /-}] ${_progress}%%${3}${4}"
+}
+
+stat_set_ok() {
+    local action="$1" name="$2"
+    [[ "$action" == "download" ]] && DOWNLOAD_OK=`expr $DOWNLOAD_OK + 1`
+    [[ "$action" == "decrypt" ]] && DECRYPT_OK=`expr $DECRYPT_OK + 1`
+    [[ "$action" == "unzip" ]] && UNZIP_OK=`expr $UNZIP_OK + 1`
+    [[ "$action" == "integrity" ]] && INTREGRITY_OK=`expr $INTREGRITY_OK + 1`
+    [[ -n "$name" ]] && echo "$name was ${action}ed successfully!"
+}
+
+stat_set_err() {
+    local action="$1" name="$2"
+    [[ "$action" == "download" ]] && DOWNLOAD_FAIL=`expr $DOWNLOAD_FAIL + 1`
+    [[ "$action" == "decrypt" ]] && DECRYPT_FAIL=`expr $DECRYPT_FAIL + 1`
+    [[ "$action" == "unzip" ]] && UNZIP_FAIL=`expr $UNZIP_FAIL + 1`
+    [[ "$action" == "integrity" ]] && INTREGRITY_FAIL=`expr $INTREGRITY_FAIL + 1`
+    if [[ -n "$name" ]]; then
+        [[ "$action" == "download" ]] && echo "$FILE_NAME download failed."
+        [[ "$action" == "decrypt" ]] && echo "$FILE_NAME GPG decryption failed."
+        [[ "$action" == "unzip" ]] && echo "$FILE_NAME decompression failed."
+        echo "$FILE_PATH" >> ${ERR_FILE_PATH}_${action}.txt
+    fi
+}
+
+function check_hash() {
+    local FILE_PATH="$1" FILE_SUM256="$2" BASENAME=
+    if [[ -f "$FILE_PATH" ]] && [[ -z "$E_IGNORE_HASH" ]]; then
+        BASENAME=$(basename "$FILE_PATH")
+
+        # primeiro verifica no fast checksum (se ativo)
+        if [[ -z "$E_FORCE_CHECKSUM" ]]; then
+            if cat $CHECKSUM_DB | grep -F "$BASENAME" | grep -F "$FILE_SUM256" > /dev/null 2>&1; then
+                return 0
+            fi
+        fi
+
+        # nao tem jeito, calcula a hash na brabeza
+        FILE_CHECKSUM=$(sha256sum "$FILE_PATH")
+        FILE_SUM256=$(echo $FILE_CHECKSUM | cut -d" " -f1 | xargs)
+        if [[ "$SHA256_SUM" != "$FILE_SUM256" ]]; then
+            # file need to be downloaded again
+            return 1
+        else
+            #put file in checksum_db list
+            echo "$FILE_CHECKSUM" >> $CHECKSUM_DB
+            return 0
+        fi
+    fi
+    return 0
+}
+
+fast_copy() {
+    rsync -avAXEWSlHh --no-compress --modify-window=1 --ignore-errors --inplace \
+        --partial --info=progress2 "$@"
+}
+
+
+process_csv() {
+    # Read the input parameters
+    PASSPHRASE="${E_PASSPHRASE}"
+    INPUT_FILE="${1/%\//}"
+
+    # Remove the trailing / from output directory path as this causes issue with P7ZIP in Windows
+    OUTPUT_DIR="${2/%\//}"
+
+    # use custom temporary directory
+    if [[ -n "$E_TEMP_DIR" ]]; then
+        [[ ! -d "$E_TEMP_DIR" ]] && mkdir -p "$E_TEMP_DIR"
+        E_TEMP_DIR="${E_TEMP_DIR/%\//}"
+    else
+        E_TEMP_DIR="${OUTPUT_DIR/%\//}"
+    fi
+
+    # use custom extract directory
+    if [[ -n "$E_EXTRACT_DIR" ]]; then
+        [[ ! -d "$E_EXTRACT_DIR" ]] && mkdir -p "$E_EXTRACT_DIR"
+        EXTRACT_DIR="${E_EXTRACT_DIR/%\//}/"
+    else
+        EXTRACT_DIR="${OUTPUT_DIR/%\//}/"
+    fi
+
+    check_prerequisites
+
+    # Type of archives
+    GPG_ONLY="GPG"
+    GPG_WITH_ZIP_OLD="GPG_ZIP"
+    GPG_WITH_ZIP="GPG_ZIP_PWD"
+    ZIP_WITH_PWD="ZIP_PWD"
+
+    TOTAL_FILES=$(cat "$INPUT_FILE" | wc -l)
+    TOTAL_FILES=`expr $TOTAL_FILES - 1`
+
+    #CHECKSUM DB
+    CHECKSUM_DB=$OUTPUT_DIR/checksums.txt
+    [[ ! -f "$CHECKSUM_DB" ]] && touch $CHECKSUM_DB
+
+    ERR_FILE_PATH=$OUTPUT_DIR/err
+    RESUME_FILE_PATH=$OUTPUT_DIR/resume.txt
+
+    # create output dir
+    mkdir -p "$OUTPUT_DIR"
+
+    {
+    read
+    while IFS=, read -r CATEGORY_READ FILE_NAME_READ URL_READ ENC_TYPE_CODE FILE_SIZE_READ SHA256_SUM_READ OTHER_FIELDS
+    do
+        FILE_COUNT=`expr $FILE_COUNT + 1`
+        #echo "Processing file $FILE_COUNT of $TOTAL_FILES:"
+        progress_bar $FILE_COUNT $TOTAL_FILES " [$FILE_COUNT/$TOTAL_FILES]\n"
+
+        ##Remove any new line or double quote
+        ENC_TYPE=$(echo $ENC_TYPE_CODE | sed 's/"//g' | tr -d '\r' | tr -d '\n')
+        FILE_NAME=$(echo $FILE_NAME_READ | sed 's/"//g')
+        URL=$(echo $URL_READ | sed 's/"//g')
+        CATEGORY=$(echo $CATEGORY_READ | sed 's/"//g')
+        SHA256_SUM=$(echo $SHA256_SUM_READ | sed 's/"//g' | xargs)
+
+        # define algumas variaveis
+        FILE_PATH="${OUTPUT_DIR/%\//}/${FILE_NAME}"
+
+        # check if file is already processed
+        if [[ -n "$E_RESUME" ]] && [[ -f "$RESUME_FILE_PATH" ]]; then
+            # search for file
+            if cat $RESUME_FILE_PATH | grep -F "$FILE_NAME" > /dev/null 2>&1; then
+                echo "$FILE_NAME already processed. skipping!"
+                continue
+            fi
+        fi
+
+        # arquivo existe e hao eh pra ignorar o hash check
+        if [[ -f "$FILE_PATH" ]]; then
+            if ! check_hash "$FILE_PATH" "$SHA256_SUM"; then
+                echo "$FILE_NAME is not authentic. Trying to download again.."
+                rm -f "$FILE_PATH"
+            fi
+        fi
+
+        # verifica se o arquivo já foi baixado
+        if [[ ! -f "$FILE_PATH" ]]; then
+            echo "Downloading $FILE_NAME"
+            curl --compressed --progress-bar "$URL" -o "$FILE_PATH" \
+                && stat_set_ok "download" "$FILE_NAME" \
+                || { stat_set_err "download" "$FILE_NAME"; continue; }
+            #check if hash of this file is ok!
+            if ! check_hash "$FILE_PATH" "$SHA256_SUM"; then
+                echo "$FILE_NAME is not authentic. Need to be downloaded again.."
+                stat_set_err "integrity"
+                rm -f "$FILE_PATH"
+                continue
+            fi
+        else
+            echo -ne "$FILE_NAME is already downloaded"
+            [[ -n "$E_IGNORE_HASH" ]] && echo " and verification has bypassed (--ignore-hash)" \
+            || { echo " and is authentic."; stat_set_ok "integrity"; }
+        fi
+
+        # download only -- bybass
+        [[ -n "$E_DOWNLOAD_ONLY" ]] && continue
+
+        #(Uncomment if need to run in debug mode)
+        if [ "$ENC_TYPE" == "$GPG_ONLY" ]; then
+            # so gpg, extrai e boa
+            [[ ! -d "${EXTRACT_DIR/%\//}/$CATEGORY/" ]] && mkdir -p "${EXTRACT_DIR/%\//}/$CATEGORY"
+            echo "Decrypting $FILE_NAME"
+            gpg --batch --yes --quiet \
+                --pinentry-mode loopback --passphrase "$PASSPHRASE" \
+                --decrypt -o "${EXTRACT_DIR/%\//}/$CATEGORY/$FILE_NAME" > /dev/null 2>&1 \
+                "$FILE_PATH" && stat_set_ok "decrypt" "$FILE_NAME" \
+                || { stat_set_err "decrypt" "$FILE_NAME"; }
+        # formatos de criptografia e zip
+        elif [ "$ENC_TYPE" == "$GPG_WITH_ZIP" -o "$ENC_TYPE" == "$GPG_WITH_ZIP_OLD" \
+                -o "$ENC_TYPE" == "$ZIP_WITH_PWD" ]; then
+
+            # sets some variables
+            ZIP_FILE_NAME=$(echo "$FILE_NAME" | cut -f 1 -d '.')".zip"
+            ZIP_FILE_PATH="${E_TEMP_DIR/%\//}/$ZIP_FILE_NAME"
+
+            #echo "GPG file path : $FILE_PATH"
+            #echo "Zip file path : $ZIP_FILE_PATH"
+            if [ "$ENC_TYPE" == "$ZIP_WITH_PWD" ]; then
+                [[ -n "$E_DECRYPT_ONLY" ]] && continue
+                #mv "$FILE_PATH" "$ZIP_FILE_PATH"
+                # extract file
+                echo "Extracting $FILE_NAME"
+                7z x -aou -p"$PASSPHRASE" -o"$OUTPUT_DIR" "$FILE_PATH" > /dev/null \
+                    && stat_set_ok "unzip" "$FILE_NAME" \
+                    || { stat_set_err "unzip" "$FILE_NAME"; continue; }
+            else
+                echo "Decrypting $FILE_NAME"
+                # verifica se a senha ta setada
+                # descriptografa
+                gpg --batch --yes --quiet --pinentry-mode loopback --passphrase "$PASSPHRASE" \
+                    --output "$ZIP_FILE_PATH" --decrypt "$FILE_PATH" > /dev/null 2>&1 \
+                    && stat_set_ok "decrypt" "$FILE_NAME" \
+                    || { stat_set_err "decrypt" "$FILE_NAME"; continue; }
+
+                #use tmp directory
+                [[ -n "$E_DECRYPT_ONLY" ]] && continue
+
+                # unzipping
+                echo "Extracting $ZIP_FILE_PATH"
+                7z x -bsp1 -bso0 -bse1 -aou -o"$EXTRACT_DIR" "$ZIP_FILE_PATH" \
+                    && stat_set_ok "unzip" "$ZIP_FILE_PATH" \
+                    || stat_set_err "unzip" "$ZIP_FILE_PATH"
+                [[ -f "$ZIP_FILE_PATH" ]] && echo "Deleting: $ZIP_FILE_PATH" && rm -f "$ZIP_FILE_PATH"
+                # add file to done
+                echo "$FILE_NAME" >> $RESUME_FILE_PATH
+            fi
+          else
+            echo "Unknown archive type in the input file: $ENC_TYPE"
+          fi
+    done
+    } < "$INPUT_FILE"
+
+    echo "Process completed with warnings."
+    echo "Total no. of files analyzed on CSV file - $FILE_COUNT"
+    echo "No. of files downloaded: successful: [$DOWNLOAD_OK] failed [$DOWNLOAD_FAIL]"
+    echo "No. of files decrypted:  successful: [$DECRYPT_OK]  failed [$DECRYPT_FAIL]"
+    echo "No. of files unzipped:   successful: [$UNZIP_OK]    failed [$UNZIP_FAIL]"
+    echo "No. of files integrity:  successful: [$INTREGRITY_OK]failed [$INTREGRITY_FAIL]"
+}
+
+usage() {
+    cat <<HELP_USAGE
+  ${0##*/}
+    [-p pwd] [-o 'output'] [-dsWOhv] production_file
+
+  Apple Law Enforcement Warranty Return Processor (v$E_VERSION).
+
+  Arguments:
+    -p|--password 'pwd'     The password to decrypt data. Will ask otherwise.
+    -o|--output 'path'      Destination folder for downloaded/extracted data.
+    -d|--only-download      Only downloads the data, dont extract. (default: off)
+    -X|--only-decrypt       Only downloads the data and decrypts it. (default: off)
+    -s|--silent             Run command in silent mode
+    -R|--no-resume          Disables resume using in-output control of files processed (default: off)
+    -i|--ignore-hash        Do not perform hash verification
+    -C|--force-checksum     Ignore checksum local datase and force recalculate hash (default: off)
+    -O|--open-only          Extract only production file to view data.
+    -E|--extract-dir 'dir'  Extract to 'dir' (default: same as output)
+    -T|--temp-dir 'dir'     Use this dir as temporary directory (default: same as output)
+    -h|--help               Show help
+    -v|--version            Show version
+
+  Sample:
+    $ ${0##*/} [options] ./202200033421_production_20220831170306.zip.gpg ...
+    $ ${0##*/} [options] ./202200033421_production_20220831170306.zip ...
+    $ ${0##*/} [options] ./ ...
+    $ ${0##*/} [options] "https://urlofproductionfile.." ...
+
+  Created by Peron (2023)
+    * Based on Apple Default Script 3.0 (get_decrypt_extract.bash)
+HELP_USAGE
+    exit 4
+}
+
+########################################
+#                                      #
+#      Command Line Arguments Parser   #
+#                                      #
+########################################
+parse_args() {
+    local OPTIONS=p:o:dsOhvXiCT:RE:
+    local LONGOPTIONS=password:,output:,only-download,silent,open-only,help,version,only-decrypt,ignore-hash,fast-checksum,temp-dir:,no-resume,extract-dir:
+
+    local argv=$(pgetopt -o $OPTIONS -l $LONGOPTIONS -n "$0" -- "$@")
+    [[ $? -ne 0 ]] && exit 2
+    eval set -- "$argv"
+    # now enjoy the options in order and nicely split until we see --
+    while true; do
+        case "$1" in
+            -p|--password)
+                E_PASSPHRASE="$2"; shift 2;;
+            -o|--output)
+                E_OUTPUT="$2"; shift 2;;
+            -d|--only-download)
+                E_DOWNLOAD_ONLY="y"; shift;;
+            -C|--force-checksum)
+                E_FORCE_CHECKSUM="y" E_IGNORE_HASH=; shift;;
+            -i|--ignore-hash)
+                E_IGNORE_HASH="y"; E_FORCE_CHECKSUM=; shift;;
+            -X|--only-decrypt)
+                E_DECRYPT_ONLY="y"; shift;;
+            -T|--temp-dir)
+                E_TEMP_DIR="$2"; shift 2;;
+            -E|--extract-dir)
+                E_EXTRACT_DIR="$2"; shift 2;;
+            -R|--no-resume)
+                E_RESUME=; shift;;
+            -O|--open-only)
+                E_OPEN_FOLDER=y; shift;;
+            -h|--help)
+                usage;;
+            -v|--version)
+                echo "${0##*/} v$E_VERSION "
+                echo "Created by Peron (2023)"
+                echo "  * Based on Apple Default Script 3.0 (get_decrypt_extract.bash)"
+                exit 4
+                ;;
+            --)
+                shift; E_FILES=( "$@" );
+                break;;
+            \? ) error "Unknown option: -$OPTARG" >&2; usage;;
+            :  ) error "Missing option argument for -$OPTARG" >&2; usage;;
+            *  ) error "Unimplemented option: -$OPTARG" >&2; usage;;
+        esac
+    done
+    #check at least one FILE
+    if [[ "${#E_FILES[@]}" -eq 0 ]]; then
+        cat <<HELP_USAGE
+You must provide at least one production file!
+
+Sample:
+  $ ${0##*/} [options] ./202200033421_production_20220831170306.zip.gpg ...
+  $ ${0##*/} [options] ./202200033421_production_20220831170306.zip ...
+  $ ${0##*/} [options] ./ ...
+  $ ${0##*/} [options] "https://urlofproductionfile.." ...
+HELP_USAGE
+        exit 4
+    fi
+    # check if has an output set
+    if [[ -z "$E_OUTPUT" ]]; then
+        E_OUTPUT=$(pwd)
+    fi
+    E_OUTPUT="${E_OUTPUT/%\//}"
+}
+
+askPassword() {
+    unset E_PASSW
+    local _def="Enter Password"
+    local prompt="${1:-$_def}: "
+    local _pass=
+    read -s -p "${prompt}" _pass
+    printf "\n"
+    [[ -n "${_pass// }" ]] && E_PASSW="$_pass" && return 0 || return 1
+}
+
+error() {
+    echo "[ERROR] $*"
+}
+
+
+process_production() {
+    local prodf="$1" prodf_base="${prodf##*/}"
+
+    if [[ "$prodf" == http* ]]; then
+        # is an url, download-it
+        download_production "$prodf"
+        return 0
+    fi
+    if [[ -f "$prodf" ]]; then
+        if [[ -d "$E_OUTPUT/${prodf_base%%.*}/Account_Data_Links" ]]; then
+            echo "Production already extracted to: $prodf"
+            process_directory "$E_OUTPUT/${prodf_base%%.*}"
+            return 0
+        elif [[ "${prodf##*.}" == "gpg" ]]; then
+            decrypt_production "$prodf"
+            return 0
+        elif [[ "${prodf##*.}" == "zip" ]]; then
+            decompress_production "$prodf"
+            return 0
+        fi
+    elif [[ -d "$prodf" ]]; then
+        # is a directory
+        process_directory "$prodf"
+        return 0
+    fi
+    # wrong
+    error "Invalid file format.. "
+    return 4
+
+}
+
+download_production() {
+    local prod_url="$1" tmpfile=$(mktemp) final_url= file_path= file=
+
+    echo "Resolving URL: $prod_url"
+    echo "Downloading production file.."
+    final_url=$(curl -ksL -w "%{url_effective}" -o $tmpfile "$prod_url")
+    echo "Download completed!"
+    file_path="/${final_url#*://*/}" && [[ "/${final_url}" == "${file_path}" ]] && file_path="/"
+    file_path="${file_path%%\?*}"
+    file="${file_path##*/}"
+
+    if [[ ! -f "$E_OUTPUT/$file" ]]; then
+        mkdir -p "$E_OUTPUT"
+        echo "Moving file to $E_OUTPUT .."
+        mv "$tmpfile" "$E_OUTPUT/$file"
+    else
+        echo "Production file already exists on: $E_OUTPUT/$file"
+        echo "Delete-it to overwrite."
+    fi
+    echo "Processing production..."
+    process_production "$E_OUTPUT/$file"
+}
+
+
+# $1 => production extracted directory
+process_directory() {
+    local prodd="$1"
+
+    if [[ -n "$E_OPEN_FOLDER" ]]; then
+        echo "Production at: $prodd/Account_Data_Links !"
+        echo "You run with option --open-only. stopping here!"
+        open $prodd
+        return 0
+    fi
+    if [[ ! -d "$prodd/Account_Data_Links" ]]; then
+        error "Invalid production file/dir: ${prodd##*/}. Skipping!"
+        return 4
+    fi
+
+    #
+    if [[ -z "$E_PASSPHRASE" ]]; then
+        if [[ -z "$E_DOWNLOAD_ONLY" ]]; then
+            # deu ruim
+            echo "Password for decryption is missing. Inform!"
+            askPassword && E_PASSPHRASE="$E_PASSW"
+        fi
+    fi
+
+    # process  each csv found in Account Data Links
+    # iterate over all csv files in Data Links
+    find "$prodd/Account_Data_Links" -name "*-account-download-details.csv" -print0 \
+        | while read -d $'\0' file
+    do
+        echo "Account Data Link Found: $file .. "
+        echo "Processing..."
+        process_csv "$file" "${prodd/%\//}/Data"
+    done
+}
+
+# $1 => production encrypted file
+decrypt_production() {
+    local prode="$1" base="${1##*/}" prodf_zip="$E_OUTPUT/${1%.*}"
+
+    # ensures that file without gpg ends with zip
+    [[ "${prodf_zip##*.}" -ne "zip" ]] && prodf_zip="${prodf_zip}.zip"
+
+    # check if file already exists
+    if [[ ! -f "$prodf_zip" ]]; then
+        # decrypt file
+        [[ -z "$E_PASSPHRASE" ]] && askPassword && E_PASSPHRASE="$E_PASSW"
+        gpg --batch --quiet --yes --pinentry-mode loopback --passphrase "$E_PASSPHRASE"  \
+          --output "$prodf_zip" --decrypt "$prode" > /dev/null 2>&1
+    fi
+    if [[ -f "$prodf_zip" ]]; then
+        decompress_production "$prodf_zip"
+        return 0
+    else
+        error "Impossible to decrypt file: $prode"
+        return 4
+    fi
+}
+
+
+decompress_production() {
+    local prodf="$1" prodd="${1%%.*}"
+    if [[ ! -d "$prodd/Account_Data_Links" ]]; then
+        7z x -aou -o"$prodd" "$prodf" > /dev/null
+    else
+         echo "Production file alreay decompressed in: $prodd"
+    fi
+    if [[ -d "$prodd/Account_Data_Links" ]]; then
+        process_directory "$prodd"
+    else
+        echo "Impossible do decompress production: $prodf"
+        return 4
+    fi
+}
+
+
+main() {
+  parse_args "$@"
+  check_prerequisites
+  for production in "${E_FILES[@]}"; do
+    process_production "$production"
+  done
+}
+
+
+main "$@"

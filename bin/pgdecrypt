@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+_readlinkf() {
+     perl -MCwd -le 'print Cwd::abs_path shift' "$1";
+}
+
+
+BK_PRIV_KEY=${BK_PRIV_KEY:-$HOME/.ssh/id_rsa}
+BK_OPENSSL=${BK_OPENSSL:-}
+BK_FILE=$(_readlinkf "$1")
+BK_FILENAME="${BK_FILE##*/}"
+BK_PREFIX="${BK_FILENAME%.enc}"
+
+#checing openssl
+if [[ -z "$BK_OPENSSL" ]]; then
+    [[ -f $HOMEBREW_PREFIX/opt/openssl/bin/openssl ]] && BK_OPENSSL=$HOMEBREW_PREFIX/opt/openssl/bin/openssl \
+        || BK_OPENSSL=$(command -v openssl)
+fi
+
+# checking private key is valid
+BK_HEAD=$(cat $BK_PRIV_KEY | head -1)
+if [[ "$BK_HEAD" != "-----BEGIN RSA PRIVATE KEY-----" ]]; then
+    #need conversion
+    cp "$BK_PRIV_KEY" "${BK_PRIV_KEY}.bak"
+    ssh-keygen -p -m PEM -f $BK_PRIV_KEY
+fi
+
+echo "Processing backup file: $BK_FILE"
+
+
+BK_DIR=$(mktemp -d)
+trap "rm -rf $BK_DIR" EXIT
+
+cd $BK_DIR
+tar -xvzf "$BK_FILE"
+
+#check key file exists
+[[ ! -f "${BK_PREFIX}.key" ]] && echo "No key file found: ${BK_PREFIX}.key doesnt exists" && exit 1
+# check data file exists
+[[ ! -f "${BK_PREFIX}.enc" ]] && echo "No encripted file found: ${BK_PREFIX}.enc doesnt exists" && exit 1
+
+#decript key
+$BK_OPENSSL pkeyutl -decrypt -inkey "${BK_PRIV_KEY}" \
+    -in "${BK_PREFIX}.key" -out $BK_DIR/key
+
+BK_OUT="${BK_FILE%.enc}.sql"
+if [[ -f "$BK_OUT" ]]; then
+    for i in $(seq 1 $END); do
+        [[ ! -f "${BK_FILE%.enc}_${i}.sql" ]] && BK_OUT="${BK_FILE%.enc}_${i}.sql" && break
+    done
+fi
+
+#decrypt file
+$BK_OPENSSL enc -aes-256-cbc -d -a -md sha512 -pbkdf2 -iter 1000000 -salt \
+    -in "$BK_DIR/${BK_PREFIX}.enc" -out - -pass file:$BK_DIR/key \
+    | zcat - > "$BK_OUT"

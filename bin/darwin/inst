@@ -1,0 +1,775 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+_SOURCES=("${BASH_SOURCE}")
+
+source "${BASH_SOURCE%/*}/../lib/inst.core.sh"
+
+# defining variables from /etc/os-release
+NAME=$(uname -s)
+VERSION=$(uname -r)
+ID=darwin
+VERSION_ID=$(uname -r | cut -d"." -f1)
+
+# no auto update here.
+export HOMEBREW_NO_AUTO_UPDATE=1
+
+# check brew
+if [[ -z "$HOMEBREW_PREFIX" ]]; then
+    command_exists "brew" && \
+        HOMEBREW_PREFIX=$(brew --prefix)
+fi
+
+########################################
+#    IT WILL BE RUN ON UPDATES         #
+########################################
+# run this every time you update something
+# this need to check if is already run
+inst_dotfiles_update() {
+    :
+}
+
+########################################
+#    INSTALL Homebrew                  #
+########################################
+inst_xcode() { #core
+    if type xcode-select > /dev/null; then
+        xpath=$( xcode-select --print-path )
+        if [[ -d "${xpath}" ]] && [[ -x "${xpath}" ]]; then
+            __info "XCode is already installed.."
+            return 0
+        fi
+        info "Installing XCode..."
+        xcode-select --install
+        sleep 1
+        osascript <<EOD
+          tell application "System Events"
+            tell process "Install Command Line Developer Tools"
+              keystroke return
+              click button "Agree" of window "License Agreement"
+            end tell
+          end tell
+EOD
+    fi
+}
+
+inst_homebrew() { #core
+    if ! command_exists brew; then
+        __info "Homebrew not found. Installing.."
+        inst_xcode
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+        for d in "/opt/homebrew" "/usr/local"; do
+            [[ -f "$d/bin/brew" ]] && export HOMEBREW_PREFIX=$d && break
+        done
+        #check if brew is configured in bash an zsh
+        if [[ -f $HOMEBREW_PREFIX/bin/brew ]]; then
+            for _shell in zshrc bashrc; do
+                [[ -f $HOME/.$_shell ]] || tee "$HOME/.$_shell"
+                if ! grep -F HOMEBREW_PREFIX 2>&1 $HOME/.$_shell > /dev/null; then
+                    # install
+                        # create a new zsrhc copiyng content
+                        $HOMEBREW_PREFIX/bin/brew shellenv > $HOME/.${_shell}_new
+                        echo "" >> $HOME/.${_shell}_new
+                        cat .${_shell} >> $HOME/.${_shell}_new
+                        mv -f $HOME/.${_shell}_new $HOME/.${_shell}
+                fi
+            done
+        fi
+        eval "\$($HOMEBREW_PREFIX/bin/brew shellenv)"
+    else
+        __info "Homebrew is already installed!"
+    fi
+    #install rosetta
+    if ! /usr/bin/pgrep oahd >/dev/null 2>&1; then
+        /usr/sbin/softwareupdate --install-rosetta --agree-to-license
+    fi
+    brew tap homebrew/core
+    brew tap homebrew/cask
+    brew tap buo/cask-upgrade
+    brew tap homebrew/cask-fonts
+    brew tap homebrew/bundle
+    brew update && brew upgrade
+    brew install cask
+    git -C $(brew --repo) checkout master
+}
+
+
+inst_update() { #core:manual
+    echo "› sudo softwareupdate -i -a"
+    # Update App Store apps
+    sudo softwareupdate -i -a
+
+    # Update Homebrew (Cask) & packages
+    brew update
+    brew upgrade
+    # Update npm & packages
+    npm install npm -g
+    npm update -g
+
+    # Update Ruby & gems
+    if [[ -d "$HOMEBREW_PREFIX/opt/ruby/bin" ]]; then
+        $HOMEBREW_PREFIX/opt/ruby/bin/gem update
+        $HOMEBREW_PREFIX/opt/ruby/bin/gem update --system
+    fi
+
+    brew cleanup
+}
+
+# installer from bundlefiles
+
+inst_bundle() { #manual
+    local brewfile=${1:-$HOME/.config/Brewfile}
+    if ! command_exists brew; then
+        inst_homebrew
+    fi
+    brew bundle dump --file="$brewfile" --force
+}
+
+inst_frombundle() { #manual
+    inst_brewfile "$@"
+}
+
+inst_brewfile() { #manual
+    local brewfile=${1:-$HOME/.config/Brewfile}
+    inst_homebrew
+    [[ ! -f  "$brewfile" ]] && echo "No Brewfile at $brewfile directory! " && exit 4
+    __info "Installing from Brewfile: $brewfile"
+    #brew bundle --file="$brewfile"
+    brew bundle install --file="$brewfile"
+}
+
+
+inst_git() { #core
+    brew install git
+    brew link --force git
+    # TODO: compare git version
+    git_config
+}
+
+git_config() { #auto:inst_git
+    local gitf=$HOME/.config/gitconfig HOMEBREW_PREFIX=$(brew --prefix)
+    [[ -f $HOMEBREW_PREFIX/bin/git ]] && GIT=$HOMEBREW_PREFIX/bin/git ||
+        GIT=git
+    if [[ -f "$HOME/.config/gitconfig" ]]; then
+        if ! $GIT config --list | grep -F "include.path=~/.config/gitconfig" > /dev/null 2>&1; then
+            #back up current git file
+            [[ -f "$HOME/.gitconfig" ]] && mv "$HOME/.gitconfig" "$HOME/.gitconfig_old"
+            #copy from sample
+            if [[ -f "$HOME/.gitconfig_sample"  ]]; then
+                cp "$HOME/.gitconfig_sample" "$HOME/.gitconfig"
+            else
+                cat << EndOfConfig > $HOME/.gitconfig
+[include]
+    path = ~/.config/gitconfig
+#[user]
+#    signingkey = "ssh-rsa <publickey>"
+#[commit]
+#    gpgsign = true
+#[gpg]
+#    format = ssh
+EndOfConfig
+            fi
+        fi
+    fi
+    # check if has signature and config
+    if [[ -f $HOME/.ssh/id_rsa.pub ]]; then
+        $GIT config --global user.signingkey "$(tr '\n' ' ' < $HOME/.ssh/id_rsa.pub)"
+        $GIT config --global commit.gpgsign true
+        $GIT config --global gpg.format ssh
+        echo "Configuring git signingkey using id_rsa. Done!"
+    elif [[ -f $HOME/.ssh/id_ed25519.pub ]]; then
+        $GIT config --global user.signingkey "$(tr '\n' ' ' < $HOME/.ssh/id_ed25519.pub)"
+        $GIT config --global commit.gpgsign true
+        $GIT config --global gpg.format ssh
+        echo "Configuring git signingkey using id_ed25519. Done!"
+    else
+        echo "[Failed] Git signingkey not found"
+        echo "You will need to configure manually! "
+    fi
+    $GIT config --global user.name "$(id -F)"
+    $GIT config --global user.email $(defaults read MobileMeAccounts Accounts | grep AccountID | cut -d \" -f2)
+}
+
+inst_essential() { #core
+
+    # essential command line
+    brew tap homebrew/bundle
+    brew tap homebrew/core
+
+    # Make sure we’re using the latest Homebrew.
+    brew update
+    # Upgrade any already-installed formulae.
+    brew upgrade
+
+    # upgrade bash and zsh
+    inst_zsh
+    inst_bash
+
+    # install gnu core utilities
+    brew install coreutils
+    brew install moreutils
+    brew install findutils
+    brew install gnu-sed
+    brew install gnupg2
+
+    #configure gnupg
+    inst_config_gpg
+
+    brew install grep
+    brew install gnu-tar
+    brew install git
+    brew install gawk
+    brew install gnutls
+    brew install gnu-indent
+    brew install gnu-getopt
+    brew install lynx
+    inst_python
+
+    #brew install ssh-copy-id
+    brew install wget
+    brew install p7zip
+    brew install pigz
+    brew install pv
+    brew install rsync
+    brew install rename
+    brew install ack
+    brew install unrar
+    brew install rclone
+    brew install openssh
+    brew install xz
+    brew install zlib
+
+    brew install qrencode
+
+    brew install vim
+
+    #image and video
+    #brew install imagemagick --with-fontconfig --with-librsvg --with-pango --with-perl --with-libwmf --with-lcms --with-tiff
+    brew install imagemagick
+    brew install ghostscript
+
+    brew install libvpx
+    #brew install ffmpeg --with-fdk-aac --with-ffplay --with-freetype --with-libass --with-libquvi --with-libvorbis --with-libvpx --with-opus --with-x265
+    brew install ffmpeg
+    brew install youtube-dl
+
+    brew install mplayer
+
+    # Lxml and Libxslt
+    brew install libxml2
+    brew install libxslt
+    brew link libxml2 --force
+    brew link libxslt --force
+
+    #networking
+    brew install tmux
+
+    # Remove outdated versions from the cellar.
+    brew cleanup
+}
+
+inst_config_gpg() {
+    [[ -n "$XDG_DATA_HOME" ]] && mkdir -p $XDG_DATA_HOME/gnupg \
+    && chown $(whoami) $XDG_DATA_HOME/gnupg \
+    && chmod 700 $XDG_DATA_HOME/gnupg \
+    && chmod 600 $XDG_DATA_HOME/gnupg/*
+}
+
+inst_network() { #core
+    # q (for query dns)
+    #brew tap natesales/repo https://github.com/natesales/repo
+    brew install doggo
+    brew install nmap
+}
+
+inst_zsh() { #auto
+    brew install zsh
+    brew install zsh-autosuggestions
+    brew install zsh-syntax-highlighting
+    brew install zsh-completions
+    #brew install zsh-you-should-use
+    inst_bash_completion
+    #brew install zsh-git-prompt
+    inst_fix_zsh_completions
+}
+
+inst_fix_zsh_completions() { #auto
+    compaudit | xargs chmod g-w
+    for f in "${fpath[@]}"; do
+        [[ -d "$f" ]] && sudo chmod -R 755 "$f"
+    done
+}
+
+inst_bash() { #auto
+    brew install bash
+    inst_bash_completion
+}
+
+inst_python() { #auto
+    if ! command_exists python3; then
+        brew install python
+    fi
+    if ! command_exists pip; then
+        inst_pip
+    fi
+    python3 -m pip install --upgrade pip build setuptools
+    brew link --overwrite python3
+
+    local py_cmd=$HOMEBREW_PREFIX/bin/python3
+    if [[ -f "$py_cmd" ]] && [[ -x "$py_cmd" ]]; then
+        [[ -f /usr/local/bin/python ]] && sudo unlink /usr/local/bin/python
+        sudo ln -s $py_cmd /usr/local/bin/python
+        sudo chmod +x /usr/local/bin/python
+    fi
+    [[ ! -f /Library/Developer/CommandLineTools/usr/bin/python ]] && \
+        sudo ln -s $py_cmd /Library/Developer/CommandLineTools/usr/bin/python && \
+            sudo chmod +x /Library/Developer/CommandLineTools/usr/bin/python
+}
+
+inst_pip() { #auto
+    curl https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
+    python3 /tmp/get-pip.py
+    rm -f /tmp/get-pip.py
+    pip3 install virtualenv
+}
+
+inst_hatch() { #manual
+    if ! command_exists python3; then
+        inst_python
+    fi
+    if ! command_exists pip; then
+        inst_pip
+    fi
+    python3 -m pip install --upgrade pip build setuptools
+    pip install --upgrade hatch
+    #config hatch
+    hatch config set template.plugins.default.src-layout true
+    hatch config set template.name "$(id -F)"
+    hatch config set template.email $(defaults read MobileMeAccounts Accounts | grep AccountID | cut -d \" -f2)
+    hatch config set template.licenses.default '["See <LICENSE>"]'
+    hatch config set dirs.env virtual ".hatch"
+
+}
+
+inst_fonts() { #fresh
+    _cmd="brew install"
+    [[ "$1" == "--reinstall" ]] && _cmd="brew reinstall"
+
+    $_cmd --cask font-jetbrains-mono-nerd-font
+    $_cmd --cask font-lato
+    $_cmd --cask font-open-sans
+    $_cmd --cask font-roboto
+    $_cmd --cask font-fira-code-nerd-font
+}
+
+inst_apps() { #fresh
+
+    brew tap "homebrew/cask"
+    brew tap "homebrew/cask-drivers"
+    brew tap "homebrew/cask-fonts"
+
+    # Make sure we’re using the latest Homebrew.
+    brew update
+    # Upgrade any already-installed formulae.
+    brew upgrade
+
+    brew install --cask sublime-text
+    inst_config_sublime
+
+    #brew install --cask "font-hack"
+    #brew install --cask "google-backup-and-sync"
+    brew install --cask google-chrome
+    #brew install --cask "1password"
+    brew install --cask alfred
+    brew install --cask iterm2
+    inst_config_iterm2
+
+    brew install --cask whatsapp
+
+    # Quick Look Plugins (https://github.com/sindresorhus/quick-look-plugins)
+    inst_quicklook
+
+    #Markdown Editor
+    #brew install --cask macdown
+
+    brew install --cask the-unarchiver
+
+    #clean mac
+    #brew install --cask cleanmymac
+
+    #multimedia stuff
+    brew install --cask spotify
+    brew install --cask obs
+    brew install --cask vlc
+    #brew install --cask gimp
+    brew install --cask inkscape
+
+    # window organization
+    brew install --cask rectangle
+
+    # Open in terminal finder
+    #brew install --cask openinterminal-lite
+
+    # open in editor
+    #brew install --cask openineditor-lite
+
+    # Remove outdated versions from the cellar.
+    brew cleanup
+}
+
+inst_config_sublime() { #auto:fresh
+    # sets sublime as default text editor
+    defaults write com.apple.LaunchServices LSHandlers -array-add \
+        "{LSHandlerContentType=public.plain-text;LSHandlerRoleAll=com.sublimetext.4;}"
+    defaults write com.apple.LaunchServices/com.apple.launchservices.secure \
+        LSHandlers -array-add \
+        "{LSHandlerContentType=public.plain-text;LSHandlerRoleAll=com.sublimetext.4;}"
+
+}
+
+
+inst_quicklook() { #auto:fresh
+    # Quick Look Plugins (https://github.com/sindresorhus/quick-look-plugins)
+    # To get plugins working in Catalina, you will need to remove the quarantine attribute.
+    # (https://github.com/sindresorhus/quick-look-plugins#catalina-notes)
+    xattr -r ~/Library/QuickLook
+    brew install --cask --no-quarantine qlmarkdown quicklook-json qlprettypatch
+    brew install --cask --no-quarantine syntax-highlight
+    brew install --cask --no-quarantine quicklook-csv qlimagesize webpquicklook
+    brew install --cask --no-quarantine quicklookase qlvideo apparency
+    # cannot verify by apple
+    #brew install --cask qlcolorcode
+    # configure quicklook plugin
+    #defaults write org.n8gray.QLColorCode fontSizePoints 12
+}
+
+inst_config_iterm2() { #auto
+    if [[ -d $HOME/.config/iterm2 ]]; then
+        # Specify the preferences directory
+        defaults write com.googlecode.iterm2 PrefsCustomFolder -string "$HOME/.config/iterm2"
+
+        # Tell iTerm2 to use the custom preferences in the directory
+        defaults write com.googlecode.iterm2 LoadPrefsFromCustomFolder -bool true
+    fi
+}
+
+inst_office_apps() { #fresh
+    # brew install --cask skype
+    #brew install --cask foxitreader
+    brew install --cask adobe-acrobat-reader
+    brew install --cask onedrive
+    brew install --cask microsoft-word
+    brew install --cask microsoft-excel
+    brew install --cask microsoft-powerpoint
+}
+
+inst_work_apps() { #fresh:manual
+    brew install --cask microsoft-teams
+}
+
+inst_sudo_fingerprint_manual() { #print
+        cat <<EndOfMessage
+    Enabling it’s very easy:
+
+    Open in text editor file /etc/pam.d/sudo
+    sudo nano /etc/pam.d/sudo
+    add (at the top) line:
+    auth sufficient pam_tid.so
+    Go to iTerm (iTerm2 -> Preferences…) – or use shortcut cmd and comma ⌘, im Advanced tab scroll
+    to category Session i change Allow sessions to survive logging out and back in. to No.
+EndOfMessage
+}
+
+inst_sudo_fingerprint() { #core:manual
+    if ! cat /etc/pam.d/sudo | grep -E "auth\s+sufficient\s+pam_tid.so"; then
+        sudo cp /etc/pam.d/sudo /etc/pam.d/sudo.backup
+        sudo awk 'NR==2{print "auth\t   sufficient\t  pam_tid.so"}1' /etc/pam.d/sudo \
+            | sudo tee /etc/pam.d/sudo
+    fi
+}
+
+inst_ntfs3g() { #advice,print
+    #brew cask uninstall osxfuse
+    #brew update
+    #brew install --cask osxfuse
+    #brew install ntfs-3g
+    # You need to create a symlink for mount_ntfs, in order to make drives mount automatically:
+    #sudo mv /sbin/mount_ntfs /sbin/mount_ntfs.original
+    #sudo ln -s /usr/local/sbin/mount_ntfs /sbin/mount_ntfs
+    echo "Link NTFS-3G to boot after temporary disabling System Integrity Protection."
+    echo "As follow:"
+    echo ""
+    echo "[reboot by holding CMD+R to get in recovery mode]"
+    echo "csrutil disable"
+    echo "[reboot normally]"
+    echo "sudo mv /sbin/mount_ntfs /sbin/mount_ntfs.original"
+    echo "sudo ln -s /usr/local/sbin/mount_ntfs /sbin/mount_ntfs"
+    echo "[reboot by holding CMD+R to get in recovery mode]"
+    echo "csrutil enable"
+    echo "[reboot normally]"
+}
+
+inst_bash_completion() { #auto
+    brew install launchctl-completion
+    brew install gem-completion
+    brew install maven-completion
+    brew install open-completion
+    brew install pip-completion
+    brew install ruby-completion
+    brew install yarn-completion
+}
+
+inst_java() { #fresh
+    brew tap bell-sw/liberica
+    brew install --cask liberica-jdk19-full
+}
+
+inst_javafx() { #core:manual,fresh:manual
+    # download sdk here https://gluonhq.com/products/javafx/
+    local java_version=19.0.2.1
+    local arch=aarch64
+    local files=(openjfx-${java_version}_osx-${arch}_bin-sdk.zip openjfx-${java_version}_osx-${arch}_bin-jmods.zip)
+
+    [[ -d "$HOME/Library/JavaFx/lib" ]] && return 0 # already installed
+    mkdir -p "$HOME/Library/JavaFx"
+
+    local tmpd=($mktemp -d)
+    echo "https://download2.gluonhq.com/openjfx/${java_version}/openjfx-${java_version}_osx-${arch}_bin-sdk.zip"
+    # download
+    for f in "${files[@]}"; do
+        if [[ ! -f "$tmpd/$f" ]]; then
+            curl "https://download2.gluonhq.com/openjfx/${java_version}/$f" \
+                -H "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15" \
+                -o "$tmpd/$f"
+        fi
+        [[ -f "$tmpd/$f" ]] || continue
+        unzip "$tmpd/$f" -d $tmpd
+    done
+    local sdk=$(find $tmpd -type d -iname 'javafx-sdk*')
+    if [[ -n "$sdk" ]]; then
+        cp -R "$sdk/" "$HOME/Library/JavaFx"
+    fi
+    local jmods=$(find $tmpd -type d -iname 'javafx-jmods*')
+    if [[ -n "$jmods" ]]; then
+        cp -R "$jmods/" "$HOME/Library/JavaFx/lib/"
+    fi
+}
+
+inst_dev_essentials() { #programming:auto
+    #programming
+    if ! command_exists brew; then
+        inst_homebrew
+    fi
+    inst_git
+    inst_python
+    brew install bat tree jq htop
+    brew install autoconf gettext automake gdbm gmp libksba libtool libyaml \
+        openssl pkg-config readline
+    # fix libtoolnize
+    brew install libtool
+    [[ ! -f "$BREW_PREFIX/bin/libtoolize" ]] && \
+        sudo ln -s $BREW_PREFIX/bin/glibtoolize $BREW_PREFIX/bin/libtoolize
+    # install neovim
+    brew install neovim
+    # default place to install local compilled software
+    sudo mkdir -p /opt/local/{bin,lib,include,share}
+    sudo chown $(whoami) /opt/local/{bin,lib,include,share}
+#    sudo chown -R $(whoami) /usr/local
+    inst_node
+    inst_node_tools
+    # install golang
+    inst_golang
+    inst_pgsql_client
+}
+
+inst_golang() { #auto:inst_dev_essentials
+    sudo mkdir -p /opt/golang/{bin,src,pkg}
+    sudo chown -R $(whoami) /opt/golang
+    export GOPATH=/opt/golang/go
+    brew install golang
+    ${HOMEBREW_PREFIX}/bin/go install -v golang.org/x/tools/gopls@latest
+}
+
+inst_dev_java() { #programming:manual
+    inst_java
+    brew install --cask eclipse-java
+    brew install --ignore-dependencies maven
+    brew install --ignore-dependencies ant ant-contrib
+    brew install --ignore-dependencies gradle
+}
+
+inst_dev_util() { #programming:manual
+    brew install jpegoptim
+    brew install optipng
+    brew install pngquant
+    brew install svgo
+    brew install gifsicle
+}
+
+
+inst_pgsql_client() { #programming:manual
+    brew install libpq
+    #sudo ln -s /usr/local/opt/libpq/bin/psql /usr/local/bin/psql
+    brew link --force libpq
+}
+
+inst_node() { #programming:auto
+    brew install node
+    export NPM_CONFIG_PREFIX=${XDG_CONFIG_HOME}/npm
+    export NPM_CONFIG_CACHE=${XDG_CACHE_HOME}/npm-cache
+    export NPM_PATH="$XDG_CONFIG_HOME/node_modules"
+    export NPM_BIN="$XDG_CONFIG_HOME/node_modules/bin"
+    export NPM_CONFIG_PREFIX="$XDG_CONFIG_HOME/node_modules"
+    mkdir -p $NPM_CONFIG_PREFIX $NPM_CONFIG_CACHE $NPM_PATH $NPM_BIN $NPM_CONFIG_PREFIX
+    npm config set cache $NPM_CONFIG_CACHE --global
+    inst_node_tools
+}
+
+inst_node_tools() { #programming:auto
+    brew install yarn
+}
+
+inst_dev_apps() { #programming:auto
+    brew install --cask visual-studio-code
+    inst_docker
+    #brew install --cask ngrok
+    #brew install --cask virtualbox
+    #brew install --cask teamviewer
+}
+
+inst_docker() { #programming:auto
+    brew install --cask docker
+    brew install docker-completion
+    brew install docker-compose-completion
+    brew install docker-machine-completion
+}
+
+inst_android() { #programming:manual
+    inst_java
+    brew install ant
+    brew install maven
+    brew install gradle
+    brew install --cask android-sdk
+    brew install --cask android-studio
+
+    touch ~/.android/repositories.cfg
+    yes | sdkmanager --licenses
+    sdkmanager --update
+    sdkmanager --no_https --install emulator
+    sdkmanager --no_https --install platform-tools
+    sdkmanager --no_https --install 'system-images;android-30;google_apis_playstore;x86_64'
+    sdkmanager --no_https --install 'extras;intel;Hardware_Accelerated_Execution_Manager'
+    sdkmanager --no_https --install 'build-tools;30.0.12'
+    sdkmanager --no_https --install 'platforms;android-30'
+    sdkmanager --list
+    #brew install --cask android-ndk
+}
+
+inst_sleuth() { #programming:manual
+    brew install ant afflib libewf libpq
+    sudo rm -f /usr/local/opt/openjdk
+    sudo mkdir -p /usr/local/opt/
+    sudo ln -s $JAVA_HOME /usr/local/opt/openjdk
+    cd /tmp
+    export CPPFLAGS="-I/usr/local/opt/libpq/include"
+    git clone -b release-4.11.1_iped_patch https://github.com/sepinf-inc/sleuthkit
+    cd /tmp/sleuthkit
+    ./configure
+}
+
+inst_code_plugins() { #programming:auto
+    :
+}
+
+inst_config() { #core:auto
+    # version 1.3.6 of Catalina Patcher, which should fix the issue where
+    # some third-party applications wouldn't launch.
+    # reboots after that
+    #sudo nvram boot-args=amfi_get_out_of_my_way=0x1
+
+    # Disable the Character Accent Menu and Enable Key Repeat in Mac OS X
+    #defaults write -g ApplePressAndHoldEnabled -bool false
+    defaults write com.apple.dock size-immutable -bool true; killall Dock
+
+    # https://support.apple.com/pt-br/guide/deployment/dep7b2ede1e3/web
+    # Suprimir a solicitação de emparelhamento ao inserir o token
+    sudo defaults write /Library/Preferences/com.apple.security.smartcard UserPairing -bool false
+    # disable smartcard login
+    sudo defaults write /Library/Preferences/com.apple.security.smartcard allowSmartCard -bool false
+
+    # Reboot into macOS 10.15, open Terminal and execute the following command:
+    # https://developer.apple.com/documentation/macos-release-notes/macos-catalina-10_15-release-notes#Known-Issues
+    # sudo touch /System/Volumes/Data/.metadata_never_index_unless_rootfs
+}
+
+inst_greenshot_icloud() { #config:manual
+    local icloud="$HOME/Library/Mobile Documents/com~apple~CloudDocs/"
+    # ensures greenshot on server exists
+    [[ ! -d "$icloud/Pictures/Greenshot" ]] && mkdir -p "$icloud/Pictures/Greenshot"
+
+    #if is already a link, ignore
+    [[ -L "$HOME/Pictures/Greenshot" ]] && return
+
+    # check local directory is empty
+    if [[ -d "$HOME/Pictures/Greenshot" ]]; then
+        cp -R "$HOME/Pictures/Greenshot/"* "$icloud/Pictures/Greenshot/" \
+        && rm -rf "$HOME/Pictures/Greenshot" || return
+    fi
+    ln -s "$icloud/Pictures/Greenshot" "$HOME/Pictures/Greenshot"
+}
+
+inst_config_defaults() { #core:manual
+    source "${BASH_SOURCE%/*}/../lib/installers/darwin-defaults.sh"
+}
+
+inst_alfred_tools() { #print
+
+   cat <<EndOfMessage
+-----------------
+ALFRED WORKFLOWS
+-----------------
+https://github.com/franzheidl/alfred-workflows/tree/master/open-with-sublime-text
+https://github.com/franzheidl/alfred-workflows/tree/master/open-with-visual-studio-code
+https://github.com/WoLpH/alfred-converter
+https://alfred.app/workflows/dfay/case-converter/
+https://alfred.app/workflows/fedecalendino/emoji-mate/
+https://www.packal.org/workflow/shorten-url
+https://github.com/fedecalendino/alfred-world-clock
+To add the BetterZip workflows to Alfred, choose BetterZip > Install Alfred Workflows from the menu.
+Alfred will display its Import Workflow sheet.
+
+----------------
+ALFRED TERMINAL
+----------------
+You need to navigate to Alfred Preferences >> Features >> Terminal:
+
+If the code is not in your clipboard, open an terminal and execute:
+
+  $ curl --silent 'https://raw.githubusercontent.com/vitorgalvao/custom-alfred-iterm-scripts/master/custom_iterm_script.applescript' | pbcopy
+
+Now, set the Application to Custom and paste the text on you clipboard to the box.
+EndOfMessage
+    echo "Coping code to you clipboard..."
+    curl --silent 'https://raw.githubusercontent.com/vitorgalvao/custom-alfred-iterm-scripts/master/custom_iterm_script.applescript' | pbcopy
+    echo "Done!"
+}
+
+inst_fix_notification_center() { #fix
+    defaults delete com.apple.notificationcenterui; killall NotificationCenter
+}
+
+inst_move_main() { #manual
+    _dotf="git --git-dir=$HOME/.config/dotfiles/ --work-tree=$HOME"
+    $_dotf fetch --all
+    $_dotf checkout main
+    $_dotf push --set-upstream origin main
+    $_dotf symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+    $_dotf branch -rd origin/master
+}
+
+__keep_sudo
+
+#execute-it
+main "$@"
+exit $?

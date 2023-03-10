@@ -1,0 +1,38 @@
+#!/usr/bin/env zsh
+# vim: ts=4 sw=4 et ft=sh
+# To the extent possible under law, the author(s) have dedicated all
+# copyright and related and neighboring rights to this software to the
+# public domain worldwide. This software is distributed without any warranty.
+# You should have received a copy of the CC0 Public Domain Dedication along
+# with this software.
+# If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
+
+# base-files version 4.3-2
+
+#Fix key settings (Home/End/Insert/Delete) in .zshrc 
+#when running Zsh in Terminator Terminal Emulator
+#https://superuser.com/a/430912
+bindkey '\e[H' beginning-of-line
+bindkey '\e[F' end-of-line 
+
+# ssh-agent startup!
+SSH_ENV=$HOME/.cache/ssh-agent
+start_ssh_agent() {
+     /usr/bin/ssh-agent -s | sed 's/^echo/#echo/' > ${SSH_ENV}
+     chmod 600 ${SSH_ENV}
+     . ${SSH_ENV}
+     /usr/bin/ssh-add > /dev/null
+}
+if [[ -f "${SSH_ENV}" ]]; then
+	. ${SSH_ENV}
+	#ps ${SSH_AGENT_PID} doesn't work under cywgin
+	ps -efp ${SSH_AGENT_PID} | grep ssh-agent$ > /dev/null || {
+		start_ssh_agent;
+	}
+else
+	start_ssh_agent;
+fi
+
+# force git sslverify to off
+git config --global http.sslVerify false
+export GIT_SSL_NO_VERIFY=true

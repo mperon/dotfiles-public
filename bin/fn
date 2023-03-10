@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+#vim: ts=4 sw=4 et ft=python
+
+import os
+import re
+import sys
+import argparse
+from pyperon.argutils import FileFinder
+from pyperon.terminal import Terminal
+
+FILE_SEARCH = "~/.config/f_search.conf"
+
+
+class FunctionList:
+    pattern = re.compile(
+        r'^((?:[ \t]*\#.*\n)*)(?:\s+)?([A-z][A-z0-9_-]+)(?:\s+)?\((?:\s+)?\)',
+        re.MULTILINE)
+    patComment = re.compile(r'^([ #\s*_-]+)$', re.MULTILINE)
+    config = None
+    out = Terminal()
+    termSize = 60
+
+    def __readFile(self, file):
+        with open(file, "r") as myfile:
+            data = myfile.readlines()
+        return ''.join(data)
+
+    def __printHeader(self, file):
+        self.out.default("|").end("-" * (self.termSize - 1))
+        self.out.default("| Directory: ").green(os.path.dirname(file)) \
+            .newline()
+        self.out.default("| File Name: ").green(os.path.basename(file)) \
+            .newline()
+        if self.config.find:
+            self.out.default("| Search: ").bold().fail(self.config.find) \
+                .newline()
+        self.out.default("|").end("-" * (self.termSize - 1))
+
+    def __printFooter(self, file):
+        self.out.default("| Ended: ").blue(os.path.basename(file)).end()
+        self.out.default("|").end("-" * (self.termSize - 1))
+
+    def __printFunction(self, match):
+        comments = match[0]
+        function = match[1]
+        if function.startswith("__"):
+            return
+        elif self.patComment.match(comments) or comments == "":
+            comments = "#"
+        # magic for multiple comments bein printed colorfull
+        comments = comments.replace("#", "| #")
+        # if starts with #  function_name, makes italic
+        replaceStr = " #    " + self.out.ITALIC + function
+        comments = re.sub(
+            r'(?:\s+)?#([\s]{3,}|[\t]+)' + re.escape(function),
+            replaceStr, comments, 0, re.MULTILINE)
+
+        self.out.blue(comments).end()
+        self.out.green("| ").bold().green(function).end()
+        self.out.end("|")
+
+    def __printFunctions(self, matches):
+        if len(matches) == 0:
+            # no matches
+            self.out.end("| ")
+            if self.config.find:
+                self.out.default("| ") \
+                    .blue("No function found in file with this name!") \
+                    .newline()
+            else:
+                self.out.default("| ").blue("The file has no bash function!") \
+                    .newline()
+            self.out.end("| ")
+        else:
+            for match in matches:
+                self.__printFunction(match)
+
+    def __filter(self, matches):
+        filtered = [match for match in matches if len(
+            match) == 2 or match[1].strip() != ""]
+        # remove newlines
+        filtered = [[match[0].rstrip(), match[1].strip()]
+                    for match in filtered]
+        return filtered
+
+    def __sortAndFind(self, matches):
+        if self.config.find:
+            matches = [match for match in matches if self.config.find in match[0]
+                       or self.config.find in match[1]]
+
+        if self.config.sort:
+            matches = sorted(matches, key=lambda match: match[1])
+        return matches
+
+    def __listFunctions(self, file):
+        fContent = self.__readFile(file)
+        self.__printHeader(file)
+        matches = self.pattern.findall(fContent)
+        matches = list(matches)
+        matches = self.__filter(matches)
+        matches = self.__sortAndFind(matches)
+        self.__printFunctions(matches)
+        self.__printFooter(file)
+
+    def _is_valid_file(self, filename):
+        if self.finder.file_exists(filename):
+            return self.finder.get_file_path(filename)
+        else:
+            raise argparse.ArgumentTypeError(
+                "Config file {0} doesnt exists!".format(path))
+
+    def main(self):
+        self.finder = FileFinder(FILE_SEARCH)
+        parser = argparse.ArgumentParser(
+            description='List Bash Script Functions')
+        parser.add_argument('files',
+                            metavar='FILE',
+                            type=self._is_valid_file,
+                            nargs='+',
+                            action="store",
+                            default=[],
+                            help='an file to list functions')
+        parser.add_argument("-f", "--find",
+                            action="store",
+                            help="Search for functions whith comment or name")
+        parser.add_argument("-d", "--declare",
+                            help="Show the source code of a function",
+                            action="store_true")
+        parser.add_argument("-s", "--sort",
+                            help="sort functions by name",
+                            action="store_true")
+        self.config = parser.parse_args()
+        for file in self.config.files:
+            self.__listFunctions(file)
+
+
+if __name__ == "__main__":
+    functionList = FunctionList()
+    functionList.main()
+    exit(0)

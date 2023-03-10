@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# vim: ts=4 sw=4 et ft=sh
+# To the extent possible under law, the author(s) have dedicated all
+# copyright and related and neighboring rights to this software to the
+# public domain worldwide. This software is distributed without any warranty.
+# You should have received a copy of the CC0 Public Domain Dedication along
+# with this software.
+# If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
+
+# base-files version 4.3-2
+
+# ~/.config/settings/ubuntu/.functions: executed by the command interpreter for login shells.
+
+################################
+# CYGWIN exclusive functions
+################################
+
+# Open default application for file type
+# open file.pdf
+open() {
+    /usr/bin/cygstart "$@"
+}
+
+# update all thing of cygwin
+update-cygwin() {
+    echo "Updating cygwin..."
+}
+
+# create a function for autoactivate python virtual enviroments
+__activate_venv() {
+    if [[ ! -f "${1}.cygwin" ]]; then
+        dos2unix -n "${1}" "${1}.tmp" > /dev/null 2>&1
+        echo "#!/bin/bash" > "${1}.cygwin"
+        sed '/VIRTUAL_ENV=.*/a VIRTUAL_ENV=$(cygpath "$VIRTUAL_ENV")' \
+            "${1}.tmp" >> "${1}.cygwin"
+        rm -f "${1}.tmp"
+        chmod +x "${1}.cygwin"
+    fi
+    source "${1}.cygwin"
+    #undo ps1 information
+    export PS1="${_OLD_VIRTUAL_PS1:-${PS1}}"
+}
+
+
+#generate a secure random password
+#   setup-cygwin [size]
+setup-cygwin() {
+        cat <<EndOfConfig
+Make a cache of local authentication, and my own Active Directory (AD) credentials
+
+$ mkpasswd -c >/etc/passwd
+$ mkgroup -c >/etc/group
+
+If taking too long, use:
+
+$ mkpasswd -l -c >/etc/passwd
+$ mkgroup -l -c >/etc/group
+
+Told Cygwin just to use these two files:
+
+$ echo 'passwd: files' >/etc/nsswitch.conf
+$ echo 'group: files' >>/etc/nsswitch.conf
+
+EndOfConfig
+
+}

@@ -1,0 +1,983 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+# import functions
+source "${BASH_SOURCE%/*}/lib/bashFn.sh"
+source "${BASH_SOURCE%/*}/lib/pgetopt.sh"
+
+INVALID_DIR="/root/,/etc/,/bin/,/boot/,/dev/,/lib/,/lib32/,/lib64/,/libx32/,/proc/,/cores/,/sbin/"
+DATA=$(date +%d/%m/%Y)
+PROGRAMS=(sed read cat awk find tar zip rclone)
+
+A_CP=/bin/cp
+A_RSYNC=/usr/bin/rsync
+
+#check already runnning tasks..
+_LOG="/dev/null"
+a_err=
+
+#default config dirname
+a_confdname="backup"
+
+#Arguments variables
+a_config= a_user= a_home= a_dest= a_force= a_listtypes= a_actions=()
+a_listactions= a_merge= a_only=() a_disable=()
+a_editconfig=
+
+#speed up thigs
+a_confs= a_functs= a_types=() a_plugins=
+a_aval_actions=("backup" "restore" "sync")
+a_config_folders=() #this is set after config
+a_config_ext=".conf"
+a_config_default="default.conf"
+
+#global vars
+fPath= fSearch=
+
+########################################
+#                                      #
+#           Main Function              #
+#                                      #
+########################################
+__main() {
+    declare -A a_confs
+    declare -A a_functs
+    declare -a a_types
+    #check program dependencies
+    if ! command_exists "${PROGRAMS[@]}"; then
+        __error "You dont have one of necessary programs to run [$a_confdname]:"
+        __listRequiredPrograms
+        exit 127
+    fi
+    #prepare for mac and cygwin
+    __prepare_commands
+
+
+    # Read all config actions
+    __process_conf_file "config" "n" "n"
+
+    __load_conf_settings
+
+    #load plugins
+    __load_plugins
+
+    # if passed -L | --list-types
+    if [[ -n "${a_editconfig}" ]]; then
+        __edit_config
+    elif [[ -n "$a_listtypes" ]]; then
+        __list_types
+    elif [[ -n "$a_listactions" ]]; then
+        __list_actions
+    else
+        __process_actions
+    fi
+
+    #do cleanup
+    __process_finalize_actions
+    __process_finalize_plugins
+
+    #cleanup
+    unset a_confs a_functs a_actions
+    return 0
+}
+
+__prepare_commands() {
+    if [[ "$MY_OS" == "darwin" ]]; then
+        A_CP=/usr/local/bin/gcp
+        A_RSYNC=/usr/local/bin/rsync
+    fi
+}
+
+__process_actions() {
+    # check if destination exists, otherside creates it
+    [[ ! -d "${a_dest}" ]] && __mkdirp "${a_dest}"
+    if [[ -d "${a_dest}" &&  ! "${a_merge,,}" == "y" ]]; then
+        __info "Cleaning up Destination local folder.."
+        rm -rf "${a_dest/%\//}/*"
+    fi
+
+    # do real processing here (backup/restore/sync)
+    local action=
+    __info "Running actions:"
+    for action in "${a_actions[@]}"; do
+        __debug "Action %s" "$action"
+        function_exists "__run_$action" && "__run_$action"
+    done
+}
+
+__list_types() {
+    local _type=
+    __print "Avaliable types in %s:" "${a_config}"
+    for _type in "${a_types[@]}"; do
+        [[ "$_type" == "conf" ]] && continue
+        __print "    - %s" "$_type"
+    done
+}
+
+__list_actions() {
+    local _action=
+    __print "Avaliable Actions:"
+    for _action in "${a_aval_actions[@]}"; do
+        __print "    - %s" "$_action"
+    done
+}
+
+__edit_config() {
+    local cfg_f="${a_config}"
+
+    if [[ -f /usr/bin/subl && -x /usr/bin/subl ]]; then
+        /usr/bin/subl "${a_config}"
+    elif [[ -f /usr/bin/editor && -x /usr/bin/editor ]]; then
+        /usr/bin/editor "${a_config}"
+    elif [[ -n "${VISUAL// }" && -f "$VISUAL" && -x "$VISUAL" ]]; then
+        $VISUAL "${a_config}"
+    elif [[ -n "${EDITOR// }" && -f "$EDITOR" && -x "$EDITOR" ]]; then
+        $EDITOR "${a_config}"
+    else
+        __print "No suitable EDITOR for open ${a_config}!"
+        return 4
+    fi
+}
+
+__load_conf_settings() {
+    #load dest conf
+    if [[ -n "${a_confs[dest]}" ]]; then
+        _cvalue="${a_confs[dest]}"
+        if ! __set_dest_folder "${a_confs[dest]}"; then
+            __error "%s" "$a_err"
+            __usage
+        fi
+    fi
+}
+
+__load_plugins() {
+    local _pd=
+    for _pd in "${a_config_folders[@]}"; do
+        [[ -d "${_pd}/plugins" ]] && __load_plugin_dir "${_pd}/plugins"
+    done
+}
+
+__load_plugin_dir() {
+    local _file= _fname= _fn=
+    for _file in "${1/%\//}"/*; do
+        if [[ -f "$_file" && -r "$_file" ]]; then
+            source "$_file"
+            # init and register plugins
+            _pname="${_file##*/}"
+            _fn="${_pname%.*}"
+            _fn_ex="__plugin_${fn}_onload"
+            function_exists "${_fn_ex}" && $_fn_ex
+            __register_plugin "$_fn"
+            # debug loading
+            __debug "Loading %s from %s" "$_file" "$_pname"
+        fi
+    done
+}
+
+__run_backup() {
+    __process_conf_file "backup" "y" "n"
+}
+
+__run_restore() {
+    __process_conf_file "restore" "y" "y"
+}
+
+__run_sync() {
+    __run_restore
+    __run_backup
+}
+
+__process_conf_file() {
+    local act_type="${1:-backup}" typ= type= data= extras= type_fn=
+    local awarn="${2,,:-n}" awarn_int= inverse="${3,,:-n}"
+    while IFS='' read -r line || [[ -n "${line// }" ]]; do
+        awarn_int="${awarn}"
+        IFS=":" read type data extras <<< "$line"
+        [[ -z "$data" ]] && data="$type" && type="file"
+        case "$type" in
+            conf|config|cfg|c) typ="conf"; awarn_int=n;;
+            file|path|dir|f|d) typ="file";;
+            rm|remove|r) typ="rm";;
+            zip|gz|tar|7z|z) typ="zip";;
+            *) typ="${type,,}";;
+        esac
+        if ! __can_process_type "$typ"; then
+            continue
+        fi
+        __register_type "$typ" #put type in type list
+        type_fn="__act_${act_type}_${typ}"
+        if [[ -z "${a_functs[$type_fn]// }" ]]; then
+            function_exists "$type_fn" && a_functs[$type_fn]="y" || a_functs[$type_fn]="n"
+        fi
+        if [[ "${a_functs[$type_fn]}" == "y" ]]; then
+             $type_fn "$type" "$data" "$extras"
+        else
+            [[ "${awarn_int,,}" == "y" ]]  && __print_fail "Type action not supported: '${type}' in: $line"
+        fi
+    done < <(__load_conf_file "${inverse}")
+}
+
+########################################
+#                                      #
+#         ACTIONS FUNCTION             #
+#                                      #
+########################################
+__act_config_conf() {
+    local type="$1" name= value=
+    IFS="=" read name value <<< "$2"
+    a_confs[$name]="$value"
+    __debug "Reading config: %s = %s" "$name" "$value"
+}
+
+########################################
+#           TYPE file                  #
+########################################
+__act_backup_file() {
+    local type="$1" fpath="$2" fextras="$3" ret=1 extraArgs= cpUpdate=
+    [[ "${a_force}" != "y" ]] && cpUpdate=" --update "
+    if __parse_fpath "$fpath" "$fextras"; then
+        local fromPath="${fPath/%\//}"
+        local toPath="${a_dest/%\//}${fromPath}"
+        #clones directory structure
+        if ! __clone_directory "/" "${a_dest/%\//}/" "${fromPath}"; then
+            __print_fail "Unable to clone directory: ${fromPath}!"
+            return 4
+        fi
+        if [[ -n "${fSearch// }" ]]; then
+            [[ ! "${fSearchSpecial}" == "y" ]] && extraArgs="-maxdepth 1"
+            find "${fromPath}" $extraArgs ! -readable -prune -o -iname "${fSearch}" \
+                -exec $A_CP -af $cpUpdate {} "${toPath/%\//}/"  \;
+            ret=$?
+        else
+            toPathDir="${toPath/%\//}" toPathDir="${toPathDir%/*}"
+            $A_CP -af $cpUpdate "${fromPath/%\//}" "${toPathDir/%\//}"
+            ret=$?
+        fi
+        [[ "$ret" -eq 0 ]] && __print_ok "Files ${fpath} to .${fromPath}"
+        return 0
+    fi
+    return 4
+}
+
+__act_restore_file() {
+    local type="$1" fpath="$2" fextras="$3" ret=1 extraArgs= cpUpdate=
+    [[ "${a_force}" != "y" ]] && cpUpdate=" --update "
+    if __parse_fpath "$fpath" "$fextras"; then
+        local toPath="${fPath/%\//}"
+        local fromPath="${a_dest/%\//}${fPath}"
+        __debug "toPath '%s'" "$toPath"
+        __debug "fromPath '%s'" "$fromPath"
+
+        if __folder_is_protected "$toPath"; then
+            __print_fail "Trying to restore to a protected folder: ${toPath}"
+            return 4
+        fi
+        if ! __clone_directory "/" "${a_dest/%\//}/" "${fromPath}"; then
+            __print_fail "Unable to clone directory: ${fromPath}!"
+            return 4
+        fi
+        if [[ -n "${fSearch// }" ]]; then
+            [[ ! "${fSearchSpecial}" == "y" ]] && extraArgs="-maxdepth 1"
+            find "${fromPath}" $extraArgs ! -readable -prune -o -iname "${fSearch}" \
+                -exec $A_CP -af $cpUpdate {} "${toPath/%\//}/"  \;
+            ret=$?
+        else
+            toPathDir="${toPath/%\//}" toPathDir="${toPathDir%/*}"
+            $A_RSYNC $cpUpdate -raz "${fromPath/%\//}/" "${toPath/%\//}/"
+            ret=$?
+        fi
+        [[ "$ret" -eq 0 ]] && __print_ok "Files ${fpath} to .${fromPath}"
+        return 0
+    fi
+    return 4
+}
+
+########################################
+#           TYPE zip                   #
+########################################
+__act_backup_zip() {
+    local tmpf= type="$1" fpath="$2" fextras="$3" ret=1 _ext=
+    if __parse_fpath "$fpath" "$fextras"; then
+        local fromPath="${fPath/%\//}"
+        if [[ -z "${fSearch// }" ]]; then
+            fSearch='*'
+            fBase=$(basename "$fromPath")
+        else
+            [[ "${fSearchSpecial}" == "y" ]] && fBase=$(basename "$fromPath") || fBase="${fSearch%.*}"
+        fi
+        local toPath="${a_dest/%\//}${fromPath}"
+
+        #creating directory structure
+        if ! __clone_directory "/" "${a_dest/%\//}/" "${fromPath}"; then
+            __print_fail "Unable to clone directory: ${fromPath}!"
+        fi
+        tmpf=$(mktemp)
+        (cd "${fromPath}" && find . ! -readable -prune -o -iname "${fSearch}" -print > "$tmpf")
+        if [[ "${type,,}" == "zip" ]]; then
+            _ext=zip
+            ( cd "${fromPath}" && cat "$tmpf" | zip -q ${toPath/%\//}/${fBase}.zip -@ > /dev/null 2>&1)
+        elif [[ "${type,,}" == "tar" ]]; then
+            _ext=tar
+            ( cd "${fromPath}" && tail -n +2 "$tmpf" | sed 's/^.\///' | tar --no-recursion -cvf ${toPath/%\//}/${fBase}.tar -T - > /dev/null 2>&1)
+        elif [[ "${type,,}" == "gz" ]]; then
+            _ext=tar.gz
+            ( cd "${fromPath}" && tail -n +2 "$tmpf" | sed 's/^.\///' | tar --no-recursion -cvzf ${toPath/%\//}/${fBase}.tar.gz -T - > /dev/null 2>&1)
+        fi
+        rm -f $tmpf
+        __print_ok "Zipped ${fpath} to .${fromPath%\//}/${fBase}.${_ext}"
+        return 0
+    fi
+    return 4
+}
+
+__act_restore_zip() { :; } #just ignore zip on restore
+
+########################################
+#           TYPE rm                    #
+########################################
+__act_backup_rm() {
+    local type="$1" fpath="$2" fextras="$3" ret=1
+    __debug "Action %s: '%s' '%s'" "$type" "$fpath" "$extras"
+    local strip_path="${fpath// }"
+    if [[ "${strip_path,,}" == "cleanup" ]]; then
+        __act_backup_rm_cleanup "$1" "$2" "$3"
+        return $?
+    elif __parse_fpath "$fpath" "$fextras"; then
+        local fromPath="${fPath/%\//}"
+        local toPath="${a_dest/%\//}${fromPath}"
+        __debug "ToPath '%s'" "$toPath"
+
+        if [[ "${fSearch// }" ]]; then
+            find "${toPath}" -name "$fSearch" -exec rm -f {} \;
+            ret=$?
+        else
+            [[ -d "${toPath}" ]] && rm -rf "${toPath}" && ret=0
+            [[ -f "${toPath}" ]] && rm -f "${toPath}" && ret=0
+            [[ "$ret" -ne 0 ]] && __print_fail "Cannot remove: .${fromPath}/${fSearch}" && return 4
+        fi
+        [[ "$ret" -eq 0 ]] && __print_ok "Removing: .${fromPath}/${fSearch}"
+        return 0
+    fi
+    return 4
+}
+
+__act_backup_rm_cleanup() {
+    local type="$1" fpath="$2" fextras="$3"
+    local ftype= pathArray=() pth= ret=0
+
+    IFS=',' read -r -a pathArray <<< "$fextras"
+    for pth in ${pathArray[@]}; do
+        ftype="f"
+        if [[ "${pth:0:3}" == "**/" ]]; then
+            ftype="f" pth="${pth:3}"
+        elif [[ "${pth: -3}" == "/**" ]]; then
+            #statements
+            ftype="d" pth="${pth:0:-3}"
+        fi
+        find "${a_dest/%\//}/" -type "$ftype" -name "${pth}" -exec rm -f {} \;
+        [[ $ret -eq 0 ]] && ret=$?
+    done
+    [[ "$ret" -eq 0 ]] && __print_ok "Cleaning up files... "  \
+       || __print_fail "Cannot cleanup files: ${fextras}"
+    return $ret
+}
+
+__act_restore_rm() { :; } #just ignore rm on restore
+
+########################################
+#           TYPE keys                  #
+########################################
+__act_backup_keys() {
+    local type="$1" fpath="$2" fextras="$3" ret=1
+    local keys_dest="${a_confs[keys_dest]:-config/keys/}"
+    local ddump="${a_dest/%\//}/${keys_dest/%\//}"
+    if ! __mkdirp "$ddump"; then
+        __print_fail "KEYS: Cannot create dump dir: '${keys_dest}'"
+        return 4
+    fi
+
+    #gets name of path
+    local fPart="${fpath/%\//}"
+    fName="${fPart##*/}"
+    fDumpFile="$ddump/${fName}.conf"
+
+    #reset file
+    dconf dump "${fpath/%\//}/" > "$fDumpFile"
+    ret=$?
+    chown -R $a_user "$fDumpFile"
+
+    [[ "$ret" -eq 0 ]] && __print_ok "Exporting keys from ${fpath/%\//}.." || \
+        __print_fail "Failed to export keys from ${fpath/%\//}!"
+    return $ret
+}
+
+__act_restore_keys() {
+    local type="$1" fpath="$2" fextras="$3" ret=1
+    local keys_dest="${a_confs[keys_dest]:-config/keys/}"
+    local ddump="${a_dest/%\//}/${keys_dest/%\//}"
+
+    #gets name of path
+    local fPart="${fpath/%\//}"
+    fName="${fPart##*/}"
+    fDumpFile="$ddump/${fName}.conf"
+
+    if [[ ! -f "$fDumpFile" ]] ||[[ ! -r "$fDumpFile" ]]; then
+        __print_fail "Failed to import keys from ${$fpath/%\//}!"
+        return 4
+    fi
+    #to import
+    dconf load "${fpath/%\//}/" < "$fDumpFile"
+    ret=$?
+    [[ "$ret" -eq 0 ]] && __print_ok "Importing keys from ${fpath/%\//}.." || \
+        __print_fail "Failed to import keys from ${fpath/%\//}!"
+    return $ret
+}
+
+########################################
+#           TYPE proxy check           #
+########################################
+__act_restore_proxycheck() {
+    [[ -f $HOME/bin/proxykeeper ]] && \
+    [[ -x $HOME/bin/proxykeeper ]] && \
+        $HOME/bin/proxykeeper --check && \
+        __print_ok "Reload proxy settings..."
+}
+
+
+########################################
+#           TYPE vscode                #
+########################################
+__act_backup_vscode() {
+    local type="$1" fpath="$2" fextras="$3"
+    local vscode_dest="${a_confs[vscode_dest]:-config/vscode/}"
+    local dpack="${a_dest/%\//}/${vscode_dest/%\//}"
+    if ! __mkdirp "$dpack"; then
+        __print_fail "VSCODE: Cannot create directory: '${dpack}'"
+        return 4
+    fi
+    if [[ -n "$SUDO_USER" ]] || [[ "$USER" != "$a_user" ]]; then
+        sudo /sbin/runuser -l "$a_user" -- /usr/bin/code --list-extensions | sudo tee "${dpack}/${fpath}" > /dev/null
+    else
+        /usr/bin/code --list-extensions > "${dpack}/${fpath}"
+    fi
+    __print_ok "Backup of vscode extensions.."
+    return 0
+}
+
+__act_restore_vscode() {
+    local type="$1" fpath="$2" fextras="$3"
+    local vscode_dest="${a_confs[vscode_dest]:-config/vscode/}"
+    local dpack="${a_dest/%\//}/${vscode_dest/%\//}"
+    local bckFile="${dpack}/${fpath}"
+    if [[ ! -d "$dpack" ]]; then
+        __print_fail "VSCODE: Cannot find directory: '${dpack}'"
+        return 4
+    fi
+
+    if [[ ! -f  "$bckFile" ]]; then
+        __print_fail "VSCODE: Cannot open file: '${bckFile}'"
+        return 4
+    else
+        local actFile=$(mktemp)
+        /usr/bin/code --list-extensions > $actFile
+
+        local _lines=$(cat "$bckFile" | wc -l)
+        if [[ "$_lines" -gt 1 ]]; then
+            #remove extensions
+            grep -v -f "$bckFile" "$actFile" | xargs --no-run-if-empty -L 1 code --uninstall-extension
+
+            #install extensions
+            grep -v -f "$actFile" "$bckFile" | xargs --no-run-if-empty -L 1 code --install-extension
+
+            #remove temporary file
+            rm -f "$actFile"
+        fi
+    fi
+    __print_ok "Restore of vscode extensions.."
+    return 0
+}
+
+
+########################################
+#           TYPE pkg                   #
+########################################
+__act_backup_pkg() {
+    local type="$1" fpath="$2" fextras="$3"
+    local pkg_dest="${a_confs[pkg_dest]:-config/packages/}"
+    local pkg_dist="${DISTRIB_RELEASE:-$a_confs[pkg_dist]}"
+    [[ "${a_confs[pkg_ignore_dist],,}" == "true" ]] && pkg_dist=""
+    local dpack="${a_dest/%\//}/${pkg_dest/%\//}/${pkg_dist/%\//}"
+    if ! __mkdirp "$dpack"; then
+        __print_fail "PACKAGES: Cannot create packages backups: '${dpack}'"
+        return 4
+    fi
+    fPart="${fpath,,}"
+    if [[ "${fPart,,}" == "packages" ]]; then
+        dpkg -l | grep ^ii | sed 's/  */ /g' | cut -d" " -f 2-4 > "${dpack/%\//}/installed.txt"
+        __print_ok "Backup of installed packages.."
+    elif [[ "${fPart,,}" == "keys" ]]; then
+        apt-key exportall > "${dpack/%\//}/repo.keys" 2>/dev/null
+        __print_ok "Backup of repository keys.."
+    elif [[ "${fPart:0:14}" == "sources.list.d" ]]; then
+        if ! __mkdirp "${dpack/%\//}/sources.list.d"; then
+            __print_fail "PACKAGES: Cannot create packages backups: '${dpack/%\//}/sources.list.d'"
+            return 4
+        fi
+        cp -R /etc/apt/sources.list.d/*.list "${dpack/%\//}/sources.list.d/"
+        __print_ok "Backup of sources.list.d/ files.."
+    elif [[ "${fPart// }" == "sources.list" ]]; then
+        cat /etc/apt/sources.list > "${dpack/%\//}/sources.list"
+        __print_ok "Backup of sources.list files.."
+    else
+        __print_fail "PACKAGES: Invalid path of backup: '${fPart}'"
+        return 4
+    fi
+    return 0
+}
+
+__act_restore_pkg() { :; }
+
+########################################
+#           TYPE cloud                 #
+########################################
+#if none is specified in config, uses first cloud
+__act_config_cloud() {
+    local type="$1" fpath="$2" fextras="$3"
+    local rem_path="${fextras:-/${DISTRIB_ID}}"
+
+    if [[ -z "${a_confs[cloud]// }" ]]; then
+        a_confs[cloud]="${fpath}:${rem_path}"
+    fi
+}
+
+__act_backup_cloud() {
+    local type="$1" fCloud="$2" fextras="$3"
+    local fCloudPath="${fextras:-/${DISTRIB_ID}}"
+    __print "Sending files to cloud: ${fCloud}:${fCloudPath:-/Unnamed}..."
+    __act_backup_cloud_internal "${a_dest/%\//}/" "${fCloud}:${fCloudPath:-/Unnamed}" "--delete-excluded"
+}
+
+__act_restore_cloud() {
+    local type="$1" fCloud="$2" fextras="$3" ret=
+    local fCloudPath="${fextras:-/${DISTRIB_ID}}"
+    #only run first time found!
+    [[ "${aCloudAlreadyRun}" == "y" ]] && return 0
+    if [[ -z "${a_confs[cloud]// }" ]]; then
+        a_confs[cloud]="${fCloud}:${fCloudPath:-/Unnamed}"
+    fi
+    __print "Downloading files from cloud..."
+    __act_backup_cloud_internal "${a_confs[cloud]}" "${a_dest/%\//}/" ""
+    ret=$?
+    [[ "$ret" -eq 0 ]] && __print_ok "Getting files from cloud: ${aconf[cloud]}" || \
+        __print_fail "Cannot get data from cloud: ${aconf[cloud]}"
+    aCloudAlreadyRun=y
+}
+
+__act_backup_cloud_internal() {
+    local fFrom="$1" fTo="$2" fExtraArgs="$3"
+    local fCloudConf="${a_home/%\//}/.rclone.conf"
+
+    #load configurations
+    [[ -n "${a_confs[cloud_conf]// }" ]] && fCloudConf="${a_confs[cloud_conf]}"
+    [[ -n "${a_confs[cloud_args]// }" ]] && fExtraArgs="$fExtraArgs ${a_confs[cloud_args]}"
+    [[ -n "${a_confs[cloud_verbose]// }" ]] && fExtraArgs="$fExtraArgs -v"
+
+    #check if home shortcut used
+    [[ "${fCloudConf:0:2}" = "~/" ]] && fCloudConf="${a_home/%\//}/${fCloudConf:2}"
+
+    if [[ ! -f "${fCloudConf}" ]]; then
+        __print_fail "Cannot sync to cloud: config file not found: '${fCloudConf}'"
+        return 4
+    fi
+    /usr/bin/rclone --skip-links \
+        --checksum  $fExtraArgs \
+        --config "${fCloudConf}" \
+        --exclude '.debris/**' --exclude '.svn/**' --exclude '.git/**' \
+        --exclude '*.sb-*-*' --exclude '*.tmp' --exclude '*~.*' \
+        --exclude 'desktop.ini' --exclude 'Thumbus.db' --exclude '~.*' \
+        sync "${fFrom}" "${fTo}"
+}
+
+########################################
+#                                      #
+# Utility functions for all actions    #
+#                                      #
+########################################
+__load_conf_file() {
+    local inverse="${1:-n}"
+    #check if last line is newline
+    lastc=$(tail -c1 "${a_config}")
+    [[ -n "${lastc}" ]] && printf '\n' >> "${a_config}"
+
+    #check inversed or not
+    if [[ "${inverse,,}" == "n" ]]; then
+        sed -e "s/^[[:space:]]\+//g" -e '/^ +$/d' -e '/^$/d' -e '/^[#;]/d' "$a_config"
+    else
+        sed -e "s/^[[:space:]]\+//g" -e '/^ +$/d' -e '/^$/d' -e '/^[#;]/d' "$a_config" \
+            | awk '{arr[i++]=$0} END {while (i>0) print arr[--i] }'
+    fi
+}
+
+__process_finalize_actions() {
+    local _act= _act_cmd=
+    for _act in "${a_actions[@]}"; do
+        _act_cmd="__act_finalize_${_act}"
+        function_exists "$_act_cmd" && $_act_cmd "$@"
+    done
+}
+
+__process_finalize_plugins() {
+    local _plug= _plug_cmd=
+    for _plug in "${a_plugins[@]}"; do
+        _plug_cmd="__plugin_${_plug}_finalize"
+        function_exists "$_plug_cmd" && $_plug_cmd "$@"
+    done
+}
+
+__register_type() {
+  local e
+  for e in "${a_types[@]}"; do [[ "$e" == "$1" ]] && return 0; done
+  a_types+=("$1")
+  return 0
+}
+
+__register_action() {
+  local e
+  for e in "${a_aval_actions[@]}"; do [[ "$e" == "$1" ]] && return 0; done
+  a_aval_actions+=("$1")
+  return 0
+}
+
+__register_plugin() {
+  local e
+  for e in "${a_plugins[@]}"; do [[ "$e" == "$1" ]] && return 0; done
+  a_plugins+=("$1")
+  return 0
+}
+
+__can_process_type() {
+    itype="${1,,}"
+    [[ "${#a_only[@]}" -eq 0 ]] && [[ "${#a_disable[@]}" -eq 0 ]] && return 0 #no filtering
+    [[ "$1" == "conf" ]] && return 0 #conf always can
+    if [[ "${#a_only[@]}" -ne 0 ]]; then
+        for _t in "${a_only[@]}"; do
+            [[ "${_t,,}" == "${itype// }" ]] && return 0
+        done
+        return 1
+    elif [[ "${#a_disable[@]}" -ne 0 ]]; then
+        for _t in "${a_disable[@]}"; do
+            [[ "${_t,,}" == "${itype// }" ]] && return 1
+        done
+        return 0
+    fi
+    return 1
+}
+
+#__getconf key defaultvalue
+__getconf() {
+    local name="$1" value="$2"
+    [[ -n "${a_confs[$name]// }" ]] && value="${a_confs[$name]}"
+    printf "%s" "$value"
+}
+
+__mkdirp() {
+    local _dir="$1"
+    [[ "${_dir// }" == "" ]] && return 4
+    [[ "${_dir// }" == "/" ]] && return 4
+    [[ -d "${_dir// }" ]] && return 0
+    __folder_is_protected "${_dir}" && return 4
+    [[ ! -d "${_dir}" ]] && mkdir -p "${_dir}" && return 0
+    return 4
+}
+
+__parse_fpath() {
+    local fPart=
+    fPath="$1" fSearch= fSearchSpecial=
+    [[ "${fPath:0:2}" = "~/" ]] && fPath="${a_home/%\//}/${fPath:2}"
+    if [[ "${fPath:0:1}" == "/" ]]; then
+        :
+    else
+        __print_fail "Malformed Path: %s" "$fpath"
+        return 4
+    fi
+    #find first char of path
+    if [[ "$fPath" =~ (\?|\*|\{|\}|\[|\]) ]]; then
+        fPart=$(echo "$fPath" | sed 's/[][;*{}].*//')
+        fSearch="${fPath:${#fPart}}"
+        fPath="${fPart}"
+        fSearchSpecial="y"
+        if [[ "${fPath:${#fPart}}" == *"/"* ]]; then
+            __print_fail "Malformed Path: %s" "$fpath"
+            return 4
+        fi
+    else
+        if [[ -f "${fPath}" ]]; then
+            fPart="${fPath/%\//}"
+            fSearch="${fPart##*/}"
+            fPath="${fPart%/*}"
+        elif [[ -d "${fPath}" ]]; then
+            fPath="${fPath/%\//}"
+            fSearch=""
+        else
+            __print_fail "Path not found: $fpath"
+            return 4
+        fi
+    fi
+    __debug "Parsing Path: '%s'" "$1"
+    __debug "fPath:   '%s'" "$fPath"
+    __debug "fSearch: '%s'" "$fSearch"
+    return 0
+}
+
+__clone_directory() {
+    local dFrom="$1" dTo="$2" dCreate="$3"
+    [[ -d "${dTo/%\//}/${dCreate}" ]] && return 0
+    [[ "${dCreate:0:1}" == "/" ]] && dCreate="${dCreate:1}"
+    IFS="/" read -ra PARTS <<< "$dCreate"
+    local _fpath="${dFrom/%\//}/" _tpath="${dTo/%\//}"
+    [[ ! -d "$_tpath" ]] && mkdir -p "$_tpath"
+    for p in "${PARTS[@]}"; do
+        [[ -z "${p// }" ]] && continue
+        _fpath="${_fpath/%\//}/${p/%\//}" _tpath="${_tpath/%\//}/${p/%\//}"
+        # __debug " _fpath='%s' _tpath='%s'" "$_fpath" "$_tpath"
+        [[ ! -d  "$_fpath" ]] && return 4
+        if [[ ! -d "$_tpath" ]]; then
+            mkdir "$_tpath"
+            #chmod --reference="$_fpath" "$_tpath"
+            #chown --reference="$_fpath" "$_tpath"
+        fi
+    done
+    [[ -d "$_tpath" ]] && return 0
+    return 4
+}
+
+__set_dest_folder() {
+    local _cvalue="$1"
+    [[ -z "${_cvalue// }" ]] && __error "Destination folder [-d | --dest] must be provided! " && return 4
+    [[ "${_cvalue:0:2}" = "~/" ]] && _cvalue="${a_home/%\//}/${_cvalue:2}"
+    if ! __folder_is_protected "${_cvalue}"; then
+        if [[ -f "${_cvalue}" ]]; then
+            a_err="Destination folder is a existent file. Cannot go on!"
+            return 4
+        else
+            a_dest="${_cvalue}"
+            return 0
+        fi
+    else
+        a_err="Dest Directory is on portected folders. Cannot assign"
+        return 4
+    fi
+}
+
+__folder_is_protected() {
+    local invArray= prot= _folder="$1"
+    [[ "$_folder" == "/" ]] && return 0
+    IFS=',' read -r -a invArray <<< "$INVALID_DIR"
+    for prot in "${invArray[@]}"; do
+        [[ "${_folder:0:${#prot}}" == "$prot" ]] && return 0
+    done
+    return 4
+}
+
+__add_default_ignores() {
+    IFS=',' read -r -a invArray <<< "$INVALID_DIR"
+    for inv in ${invArray[@]}; do
+        :
+    done
+}
+
+__print_fail() {
+    print_msg "$*" "$I_RED" "[FAIL]"
+}
+
+__print_ok() {
+    print_msg "$*" "$I_GREEN" "[OK]"
+}
+
+########################################
+#                                      #
+#      Command Line Arguments Parser   #
+#                                      #
+########################################
+__parse() {
+    local bypass=n t_dest=
+    local OPTIONS=c:l:d:u:mhvO:TAfsD:E
+    local LONGOPTIONS=config:,log:,dest:,user:,merge,help,debug,only:,list-types,list-actions,force,silent,disable:,editor
+
+    local argv=$(pgetopt -o $OPTIONS -l $LONGOPTIONS -n "$0" -- "$@")
+    [[ $? -ne 0 ]] && exit 2
+    eval set -- "$argv"
+
+    __debug "" "Parsed GetOpts: $*"
+    # now enjoy the options in order and nicely split until we see --
+    while true; do
+        case "$1" in
+            -c|--config)
+                a_config="$2"; shift 2;;
+            -l|--log)
+                _LOG="$2"; shift 2;;
+            -u|--user)
+                a_user="$2"; shift 2;;
+            -d|--dest)
+                t_dest="$2"; shift 2;;
+            -M|--merge)
+                a_merge="y"; shift;;
+            -f|--force)
+                a_force="y"; shift;;
+            -O|--only)
+                a_only+=("$2"); shift 2;;
+            -D|--disable)
+                a_disable+=("$2"); shift 2;;
+            -T|--list-types)
+                a_listtypes="y" bypass="y"; shift;;
+            -A|--list-actions)
+                a_listactions="y" bypass="y"; shift;;
+            -E|--edit-config)
+                a_editconfig="y" bypass="y"; shift;;
+            -s|--silent)
+                _SILENT=y; shift;;
+            -v|--debug)
+                _DEBUG=y; shift;;
+            --)
+                shift; a_actions=( "$@" ); break;;
+            -h) __usage;;
+            \? ) __error "Unknown option: -$OPTARG" >&2; __usage;;
+            :  ) __error "Missing option argument for -$OPTARG" >&2; __usage;;
+            *  ) __error "Unimplemented option: -$OPTARG" >&2; __usage;;
+        esac
+    done
+    #check user and home
+    if [[ -z "$a_user" ]]; then
+        a_user=$(whoami)
+        if [[ "$SUDO_USER" != "" && "$USER" == "root" ]]; then
+            a_user="$SUDO_USER"
+        else
+            a_user="$USER"
+        fi
+    fi
+    a_home=$(eval echo ~$a_user)
+    if [[ ! -d "${a_home}" ]]; then
+        __error "User home dir cannot be found!!!"
+        exit 4
+    fi
+
+    #define config path search
+    local _dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+    a_config_folders=("$a_home/.config/${a_confdname}" "${_dir}/lib/${a_confdname}" "${_dir}/${a_confdname}.d" "/etc/${a_confdname}.d")
+
+    #destination default
+    if [[ -z "$t_dest" ]]; then
+        local dest_def="${DISTRIB_ID:-Ubuntu}"
+        t_dest="$a_home/Cloud/$dest_def"
+    fi
+
+    #deals with config search
+    __configPathAnalyze
+
+    if ! __set_dest_folder "${t_dest}"; then
+        __error "%s" "${a_err}"
+        __usage
+    fi
+
+    #check usage of only and disable together
+    if [[ "${#a_only[@]}" -ne 0 ]] && [[ "${#a_disable[@]}" -ne 0 ]]; then
+        __error "You cannot use --only and --disable together! choose one!"
+        __usage
+    fi
+
+    #check actions
+    if [[ "$bypass" == "n" ]]; then
+        if [[ "${#a_actions[@]}" -eq 0 ]]; then
+            __error "You must provide at least one action!"
+            __usage
+        fi
+    fi
+}
+
+__configPathAnalyze() {
+    local cfg_f= _emsg=
+    # ensure that .config under home exists
+    if [[ ! -d "$a_home/.config/$a_confdname/" ]]; then
+        mkdir -p "$a_home/.config/$a_confdname/"
+    fi
+    # se a_config nao estiver definido, sera o valor default
+    if [[ -z "$a_config" ]]; then
+        a_config="${a_config_default}"
+    fi
+    #file is set, check if exists
+    #if oly filename try to find it on paths
+    if [[ "${a_config##/*/}" == "${a_config}" ]]; then
+        for cfg_f in "${a_config_folders[@]}"; do
+            [[ -r "${cfg_f/%\//}/${a_config}" ]] && a_config="${cfg_f/%\//}/${a_config}" && break
+            [[ -r "${cfg_f/%\//}/${a_config}${a_config_ext}" ]] && a_config="${cfg_f/%\//}/${a_config}${a_config_ext}" && break
+        done
+    fi
+
+    if [[ ! -f "${a_config}" ]] || [[ ! -r "${a_config}" ]]; then
+        _emsg=""
+        for cfg_f in "${a_config_folders[@]}"; do echo $cfg_f; _emsg="${_emsg}[$cfg_f], "; done
+        __error "Default config file not found!"
+        __info "You must set it in: ${_emsg}"
+        __info "OR you must set the file using -c configfile "
+        __usage
+    fi
+}
+
+__listRequiredPrograms() {
+    __print "Required Programs To Run: "
+    for prog in "${PROGRAMS[@]}"; do
+        __print "  ${prog}"
+    done
+    __print "Thats All!"
+}
+
+__usage() {
+    cat <<HELP_USAGE
+$0
+    [-mATvh] [-c config] [-d dest dir] [-u user] ... action1 ...
+
+ACTIONS:
+    backup          Backup all files from config file
+    restore         Restore files based on config files
+    sync            Makes a sync (restore and backup)
+
+ARGUMENTS:
+    -c|--config [file]  Specify config file (default ~/.config/$a_confdname/default.conf)
+    -d|--dest [path]    Destination folder for local backup
+    -l|--log [file]     Specify log file (default Off)
+    -m|--merge          Merge current backup with older backup in --dest folder
+    -o|--only file      Limit types of actions that will be executed. get a list with -A.
+    -D|--disable cloud  Disable type process from command. get a list of types with -T
+    -u|--user [name]    User to run script environment
+    -A|--list-actions   Get a list of all actions avaliable
+    -T|--list-types     Get a list of all types avaliable
+    -E|--edit-config    Opens config in default /usr/bin/editor or $VISUAL or $EDITOR
+    -v|--debug          Show Debug information
+    -s|--silent         Run command in silent mode
+    -h|--help           Show help
+HELP_USAGE
+    exit 4
+}
+
+if [[ -n "$_DEBUG" ]]; then __print "Parsing command line arguments.."; fi
+
+__parse "$@"
+__debug "Command Line Arguments: "
+__debug "  --config: %s"  "$a_config"
+__debug "    --dest: %s"  "$a_dest"
+__debug "   --merge: %s"  "$a_merge"
+__debug "    --only: %s"  "(${a_only[*]})"
+__debug "    --user: %s"  "$a_user"
+__debug " --disable: %s"  "(${a_disable[*]})"
+__debug " [actions]: %s"  "(${a_actions[*]})"
+__debug "     --log: %s"  "$_LOG"
+__debug "   --debug: %s"  "$_DEBUG"
+__debug ""
+__debug "Config Search Path:"
+__debug "   %s" "${a_config_folders[@]}"
+__debug ""
+__debug "Running main code: "
+__debug ""
+__main "$@"
+
+exit $?

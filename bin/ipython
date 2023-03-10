@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+# Default variables
+source "${BASH_SOURCE%/*}/lib/venv.sh"
+
+# venv variables
+P_VENV_NAME="home_ipython"
+P_VERSION="python3"
+P_VENV_PKGS="ipython"
+P_VENV_PATH="$HOME/bin"
+
+ensure_venv || exit 4
+${VIRTUAL_ENV}/bin/ipython3 "$@"

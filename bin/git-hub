@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+# import functions
+source "${BASH_SOURCE%/*}/lib/open.lib.sh"
+
+url=$(git remote -v | grep 'origin' | head -n1 | grep -o '@.*\.git')
+if [[ -n "$url" ]]; then
+
+    fullurl="${url//@/}"
+    fullurl="${fullurl//.git/}"
+    fullurl="${fullurl//:/\/}"
+    echo "Going to:"
+    echo "  https://$fullurl/"
+    system_open "https://$fullurl/" &
+
+else
+    echo "There is no remote origin to go to..."
+    exit 4
+fi

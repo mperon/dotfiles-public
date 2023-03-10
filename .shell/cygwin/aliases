@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# vim: ts=4 sw=4 et ft=sh
+# To the extent possible under law, the author(s) have dedicated all
+# copyright and related and neighboring rights to this software to the
+# public domain worldwide. This software is distributed without any warranty.
+# You should have received a copy of the CC0 Public Domain Dedication along
+# with this software.
+# If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
+
+# base-files version 4.3-2
+
+# ~/.config/settings/ubuntu/.myaliases
+
+################################
+# CYGWIN exclusive functions
+################################
+
+alias sudo='/usr/bin/cygstart --action=runas'
+alias xdg-open='/usr/bin/cygstart'
+
+alias cls='tput clear'
+
+#coping aliases
+[[ -f /usr/bin/rsync ]] && alias cp='/usr/bin/rsync -ah --partial --inplace --info=progress2'
+
+# enable color support of ls and also add handy aliases
+if [[ -f /usr/bin/dircolors ]]; then
+    [[ -r "$HOME/.dircolors" ]] && eval "$(/usr/bin/dircolors -b $HOME/.dircolors)"
+    export LS_COLORS="$LS_COLORS:ow=01;33"
+    export GCC_COLORS='error=01;31:warning=01;35:note=01;36:caret=01;32:locus=01:quote=01'
+    alias ls='/bin/ls -hF --color=auto'
+    alias grep='/bin/grep --color=auto'
+    alias fgrep='/bin/fgrep --color=auto'
+    alias egrep='/bin/egrep --color=auto'
+fi
+
+#shortcuts aliases
+alias documents='cd /cygdrive/c/Users/$USER/Documents'
+alias downloads='cd /cygdrive/c/Users/$USER/Downloads'
+alias desktop='cd /cygdrive/c/Users/$USER/Desktop'
+alias desk='cd /cygdrive/c/Users/$USER/Desktop'
+alias music='cd /cygdrive/c/Users/$USER/Music'
+alias videos='cd /cygdrive/c/Users/$USER/Videos'
+
+
+alias h='cd $HOME'
+alias H='cd $HOME'
+alias D='cd /cygdrive/c/Users/$USER/Downloads'
+alias V='cd /cygdrive/c/Users/$USER/Videos'
+alias W='cd /cygdrive/c/Users/$USER/Documents'
+alias F='cd /cygdrive/c/Users/$USER/Pictures'
+alias M='cd /cygdrive/c/Users/$USER/Music'
+
+# clipboard
+alias pbcopy='tee > /dev/clipboard'
+alias pbpaste='cat /dev/clipboard'

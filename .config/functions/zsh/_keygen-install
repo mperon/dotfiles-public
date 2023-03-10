@@ -1,0 +1,24 @@
+#compdef keygen-install
+# -*- mode: bash -*-
+
+#usage
+# keygen-install remote-server key
+integer ret=1
+
+_key_or_files() {
+    _alternative \
+        'keys:ssh keys:_files -W $HOME/.ssh/ -g "*.pub"' \
+        'files:key file:_files -g "*.pub"'
+}
+
+local -a args
+
+args+=(
+    '1:host:_hosts'
+    '2:public key:_key_or_files'
+)
+
+_arguments -C $args[@] && ret=0
+
+return ret
+

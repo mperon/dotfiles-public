@@ -1,0 +1,10 @@
+.debris/**
+.git/**
+.svn/**
+.git/**
+*.sb-*-*
+*.tmp
+*~.*
+desktop.ini
+Thumbus.db
+~.*

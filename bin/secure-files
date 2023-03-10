@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+# 1=> size of password
+gen_pwd() {
+	LC_ALL=C tr -dc A-Za-z0-9 < /dev/urandom | head -c ${1:-32}
+}
+
+# 1=> directory to zip
+# 2=> outupt file name
+zip_folder() {
+	#7z a -t7z -m0=lzma -mx=9 -mfb=64 -md=32m -ms=off "${2}" "$1"
+	(
+		cd "$1"
+		zip -r "../${2}" .
+	)
+
+	if [[ -f "$2" ]]; then
+		return 0
+	else
+		return 1
+	fi
+
+}
+
+#1 => file to encrypt
+encrypt_file() {
+	local _pwd=$(gen_pwd 32) gpg_file="${1}.gpg" pwd_file="${1}-Senha.txt"
+	echo "Senha: $_pwd" > "$pwd_file"
+	echo "$_pwd" | gpg --batch --no-tty --yes --passphrase-fd 0 -o "$gpg_file" --symmetric "$1"
+	if [[ -f "$gpg_file" ]]; then
+		return 0
+	else
+		return 1
+	fi
+}
+
+
+# 1=> folder to encrypt
+process_folder() {
+	local folder="$1" zip_name="${1}.zip"
+
+	if zip_folder "$folder" "$zip_name"; then
+		# now we have a zip file, create a password and encrypt-it
+		if encrypt_file "$zip_name"; then
+			# clean up
+			rm -f "$zip_name"
+			echo "Sucessfully encrypted $folder on ${zip_name}.gpg"
+		else
+			echo "Error encrypting file $zip_name .."
+			return 4
+		fi
+	else
+		echo "Error zipping folder $1 .."
+		return 4
+	fi
+}
+
+
+cd "$1"
+for f in *; do
+	if [[ -d $f ]]; then
+		process_folder "$f"
+	fi
+done
+

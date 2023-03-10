@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+_SOURCES=("${BASH_SOURCE}")
+
+source "${BASH_SOURCE%/*}/../lib/inst.core.sh"
+
+NAME=Cygwin
+VERSION=$(uname -r)
+ID=cygwin
+VERSION_ID=$(uname -r | cut -d"." -f1)
+
+########################################
+#    INSTALL APT-CYG                   #
+########################################
+
+isudo() {
+    if [[ -p /dev/stdin ]]; then
+        local tmpf=$(mktemp)
+        cat - > $tmpf && trap "rm -f $tmpf" EXIT
+        cygstart --action=runas "$@" bash $tmpf
+    else
+        cygstart --action=runas "$@"
+    fi
+}
+
+inst_add() {
+    apt-cyg install "$@"
+}
+
+inst_apt_cyg() { #core:auto
+    #installing apt-cyg
+    if ! command_exists apt-cyg; then
+        lynx -source rawgit.com/transcode-open/apt-cyg/master/apt-cyg > /tmp/apt-cyg
+        isudo /usr/bin/install /tmp/apt-cyg /bin
+    fi
+}
+
+inst_essential() { #core
+    inst_add wget rxvt-unicode curl vim git diffutils patchutils python3 tar \
+    bzip2 bash-completion ca-certificates python-setuptools rsync ncurses gcc-g++ \
+    make diffutils libmpfr-devel libgmp-devel libmpc-devel lynx ImageMagick qpdf \
+    openssh git ping nc cygrunsrv jq openssh chere libboost-devel gdb zip \
+    unzip optipng exif perl gnupg dos2unix cygrunsrv corkscrew vim
+}
+
+inst_config() { #core
+    # install cyg server
+    local tmpf=$(mktemp)
+    cat <<EndOfScript | isudo
+#!/usr/bin/env bash
+
+#starting cygwin server
+/usr/bin/cygserver-config
+sc config "cygserver" start=delayed-auto
+sc stop "cygserver"
+
+# fixing login taking to much time
+mkpasswd -c >/etc/passwd
+mkgroup -c >/etc/group
+echo 'passwd: files' >/etc/nsswitch.conf
+echo 'group: files' >>/etc/nsswitch.conf
+EndOfScript
+}
+
+
+#execute-it
+main "$@"
+exit $?

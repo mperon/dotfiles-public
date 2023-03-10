@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+rr_win="$1"
+shift
+rr_command="$@"
+/usr/bin/wmctrl -x -a "$rr_win" || "$rr_command"
+
+#gnome-terminal-server.Gnome-terminal

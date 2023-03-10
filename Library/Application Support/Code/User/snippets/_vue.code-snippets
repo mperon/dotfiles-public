@@ -1,0 +1,74 @@
+{
+  "vue3-sfc": {
+    "scope": "vue",
+    "prefix": "vue3",
+    "body": [
+      "<template>",
+      "\t<div class=\"\">",
+      "",
+      "</div>",
+      "</template>",
+      "<script>",
+      "import { defineComponent, ref, computed, reactive, watch, watchEffect } from \"vue\"",
+      "import { useHttp } from \"@/helpers/http\"",
+      "import { showToast, showToastError, showToastOk } from \"@/helpers/toast\"",
+      "import { useRoute, useRouter } from \"@/router\"",
+      "import { useAuthStore } from \"@/store/auth\"",
+      "",
+      "export default defineComponent({",
+      "\tname: \"${1:${TM_FILENAME_BASE}}\",",
+      "\tsetup() {",
+      "\t\tconst ${2:refName} = ref(${3:true})",
+      "\t\t${4:}",
+      "\t\treturn {${2}}",
+      "\t}",
+      "});",
+      "</script>",
+      "<style lang=\"sass\" scoped>",
+      "\t",
+      "</style>"
+    ],
+    "description": "Vue3 - SFC"
+  },
+  "template": {
+    "scope": "vue",
+    "prefix": "template",
+    "body": [
+      "<template>",
+      "\t<div class=\"$2\">",
+      "\t\t$0$3",
+      "\t</div>",
+      "</template>"
+    ],
+    "description": "Template Tag - Vue3 Composition API"
+  },
+  "script": {
+    "scope": "vue",
+    "prefix": "script",
+    "body": [
+      "<script>",
+      "import { defineComponent, ref, computed, reactive, watch, watchEffect } from \"vue\"",
+      "import { useHttp } from \"@/helpers/http\"",
+      "import { showToast, showToastError, showToastOk } from \"@/helpers/toast\"",
+      "import { useRoute, useRouter } from \"@/router\"",
+      "import { useAuthStore } from \"@/store/auth\"",
+      "",
+      "export default defineComponent({",
+      "\tname: \"${1:${TM_FILENAME_BASE}}\",",
+      "\tsetup() {",
+      "\t\tconst ${2:ref} = ref(${3:true})",
+      "\t\t${4}",
+      "\t\treturn {${2}}",
+      "\t}",
+      "});",
+      "</script>"
+    ],
+    "description": "Script Tag - Vue3 Composition API"
+  },
+  "style": {
+    "scope": "vue",
+    "prefix": "style",
+    "body": ["<style lang=\"sass\" scoped>", "\t$1", "</style>"],
+    "description": "Style Tag - Vue3 Composition API"
+  }
+}

@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# vim: ts=4 sw=4 et ft=sh
+# To the extent possible under law, the author(s) have dedicated all
+# copyright and related and neighboring rights to this software to the
+# public domain worldwide. This software is distributed without any warranty.
+# You should have received a copy of the CC0 Public Domain Dedication along
+# with this software.
+# If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
+
+# base-files version 4.3-2
+
+# ~/.config/settings/ubuntu/.mybashrc: executed by bash(1) for interactive shells.
+
+# calculates a numeric
+# ? 10 + 3
+=() {
+    local IFS=' '
+    local calc="${*//p/+}"
+    calc="${calc//x/*}"
+    bc -l <<<"scale=10;$calc"
+}
+
+function _update_ps1() {
+    PS1=$(powerline-shell $?)
+}
+
+#powerline shell
+if command -v powerline-shell > /dev/null 2>&1; then
+    if [[ $TERM != linux && ! $PROMPT_COMMAND =~ _update_ps1 ]]; then
+        PROMPT_COMMAND="${PROMPT_COMMAND}"$'\necho -n "\033]0;${USER}@${HOSTNAME}: ${PWD}\007"'
+        export PROMPT_COMMAND="_update_ps1; $PROMPT_COMMAND"
+    fi
+else
+    #change ps1 to multiline
+    export PS1="${PS1::-3} \n$ "
+fi

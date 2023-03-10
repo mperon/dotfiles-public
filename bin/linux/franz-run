@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+_nice=${1:-10}
+shift
+_franz=$(command -v franz)
+
+if [[ "$?" -eq 0 ]] && [[ -n "${_franz// }" ]]; then
+    /usr/bin/nice -n ${_nice} -- ${_franz} "$@"
+fi

@@ -1,0 +1,30 @@
+{
+  "TryCatchFinally": {
+    "prefix": "tryf",
+    "body": [
+      "try {",
+      "\t${1:}",
+      "} catch(err) {",
+      "\t${2:}",
+      "} finally {",
+      "\t${3:}",
+      "}"
+    ],
+    "description": "Try Catch Finally"
+  },
+  "TryCatch": {
+    "prefix": "tryc",
+    "body": ["try {", "\t${1:}", "} catch(err) {", "\t${2:}", "}"],
+    "description": "Try Catch"
+  },
+  "HttpTryCatch": {
+    "prefix": "htry",
+    "body": [
+      "try {",
+      "\tconst ${1:resp} = await ${2:http}.${3:get}('${4:/}')",
+      "\t${5:}",
+      "} catch(err) { /* handled by http */ }"
+    ],
+    "description": "Http Try Catch"
+  }
+}

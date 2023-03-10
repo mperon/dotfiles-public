@@ -1,0 +1,266 @@
+*
+!/*/
+
+#Basic folders
+/Library/*
+/Applications/*
+/Desktop/*
+/Documents/*
+/Downloads/*
+/Movies/*
+/Music/*
+/Pictures/*
+/Projetos/*
+/OneDrive/*
+.Trash
+
+# bash settings
+!/.shell/**
+
+#ssh spaces
+!/.ssh/config
+!/.ssh/config.d/*
+!/.ssh/config.d/.gitkeep
+
+#my binary files
+!/bin/**
+!/bin/lib/**
+!/bin/lib/installers/**
+!/bin/lib/installers/dotfiles-public.sh
+!/bin/lib/installers/dotfiles.sh
+
+# my setings
+!/.config/*.conf
+!/.config/gitconfig
+!/.config/proxy_*
+!/.config/public-ignore.conf
+
+# backup tools
+!/.config/backup/**
+!/.config/backupfire/**
+!/.config/bkcfg/**
+!/.config/dircolors/**
+
+# linux conky
+!/.config/conky/**
+
+# other settings for linux
+!/.config/fontconfig/**
+!/.config/fontconfig/conf.d/**
+!/.config/powerline-shell/**
+
+# vim configuration
+!/.config/vim/**
+
+# nvim configuration
+!/.config/nvim/**
+
+# user settings
+!/.config/proxyconfig/**
+
+# cloud and shares
+!/.config/rclone/**
+!/.config/smbshares/**
+
+# virtualbox for linux
+!/.config/VirtualBox/**
+
+#shared apllications
+!/.local/share/applications/**
+!/.local/share/fonts/**
+/.local/share/fonts/**/
+!/.local/share/icons/**
+!/.local/share/nautilus-python/**
+!/.local/share/themes/**
+
+# code settings for linux
+!/.config/Code/User/*.json
+!/.config/Code/User/snippets/**
+
+# iterm 2 config files
+!/.config/iterm2/*.iterm*
+!/.config/iterm2/*.json
+
+# public keys
+!/.config/keys
+!/.config/keys/*.pub
+!/.config/keys/*.asc
+!/.config/keys/*.gpg
+!/.config/keys/trustdb.txt
+
+# iterm2
+!/Library/Application Support/iTerm2/DynamicProfiles/*.json
+
+#code
+!/Library/Application Support/Code/User/*.json
+#!/Library/Application Support/Code/User/*.txt
+!/Library/Application Support/Code/User/snippets/**
+
+# sublime text for linux
+!/.config/sublime-text-3/Packages/User/**
+/.config/sublime-text-3/**/*.cache
+
+# sublime text mac
+!/Library/Application Support/Sublime Text 3/Packages/User/**
+/Library/Application Support/Sublime Text 3/**/*.cache
+
+# fonts
+!/.fonts/**
+
+#Mac Fonts
+!/Library/Fonts/
+!/Library/Fonts/ArmyCondensed.ttf
+!/Library/Fonts/DIN-Regular.ttf
+!/Library/Fonts/encodings.dir
+!/Library/Fonts/fonts.dir
+!/Library/Fonts/fonts.list
+!/Library/Fonts/fonts.scale
+!/Library/Fonts/NotoSans-Bold.ttf
+!/Library/Fonts/NotoSans-BoldItalic.ttf
+!/Library/Fonts/NotoSans-Italic.ttf
+!/Library/Fonts/NotoSans.ttf
+!/Library/Fonts/NotoSerif-Bold.ttf
+!/Library/Fonts/NotoSerif-BoldItalic.ttf
+!/Library/Fonts/NotoSerif-Italic.ttf
+!/Library/Fonts/NotoSerif.ttf
+!/Library/Fonts/open-sans-bold.ttf
+!/Library/Fonts/OpenSans-Bold.ttf
+!/Library/Fonts/OpenSans-BoldItalic.ttf
+!/Library/Fonts/OpenSans-ExtraBold.ttf
+!/Library/Fonts/OpenSans-Italic.ttf
+!/Library/Fonts/OpenSans-Regular.ttf
+!/Library/Fonts/Ruda-Black.ttf
+!/Library/Fonts/SegoeUI.ttf
+!/Library/Fonts/Tahoma.ttf
+!/Library/Fonts/Verdana-Bold.ttf
+!/Library/Fonts/Verdana-BoldItalic.ttf
+!/Library/Fonts/Verdana-Italic.ttf
+!/Library/Fonts/Verdana.ttf
+
+#vim
+!/.vimrc
+
+#templates
+!/Templates/**
+
+# java workspace
+!/.workspace/**
+!/.AndroidStudioPreview/**
+
+#maven stuff
+!/.config/m2/settings.xml
+
+# intellij idea
+!/.IntelliJIdea*/config/**
+/.IntelliJIdea*/config/plugins
+/.IntelliJIdea*/config/settingsRepository
+
+#files
+!/.conkyrc
+!/.gitconfig_sample
+!/.gitignore
+!/.gtkrc-2.0
+!/.inputrc
+!/.rclone.conf
+!/.curlrc
+!/.editorconfig
+!/.tmux.conf
+!/.screenrc
+!/.npmrc
+!/.wgetrc
+!/.minttyrc
+!/.gemrc
+# dont ignore Brewfile
+!/.config/Brewfile
+
+#ignore vscode in all directories
+.vscode
+
+# enscripts
+!/.config/enscript/**
+
+#ignore common types
+## uuuid ##
+.uuid
+
+### Python ###
+# Byte-compiled / optimized / DLL files
+__pycache__
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+
+# Intellij Idea
+.idea
+
+#virtual enviroments
+.venv*/
+venv*/
+virtualenv*/
+.virtualenv*/
+
+# Created by https://www.toptal.com/developers/gitignore/api/linux,macos
+### Linux ###
+*~
+
+# temporary files which can be created if a process still has a handle open of a deleted file
+.fuse_hidden*
+
+# KDE directory preferences
+.directory
+
+# Linux trash folder which might appear on any partition or disk
+.Trash-*
+
+# .nfs files are created when an open file is removed but is still being accessed
+.nfs*
+
+### macOS ###
+# General
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Icon must end with two \r
+Icon
+
+# Thumbnails
+._*
+
+# Files that might appear in the root of a volume
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Directories potentially created on remote AFP share
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# End of https://www.toptal.com/developers/gitignore/api/linux,macos
+
+# ignore bare config repository
+.cache/dotfiles
+
+#ignores caches
+!/.cache/vim/*/.gitkeep
+
+#allow readme.md
+!README.md
+
+# zsh dump files
+.zcompdump
+
+# ignore downloads
+/Downloads
+
+# ignore projetos
+/Projetos

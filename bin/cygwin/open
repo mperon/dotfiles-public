@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=bash
+
+# import functions
+/usr/bin/cygstart "$@" 

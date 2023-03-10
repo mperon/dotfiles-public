@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+action="$1"
+shift
+
+rclone "$action" --fast-list --drive-skip-shortcuts \
+    --drive-chunk-size=32M --contimeout=30m \
+    --drive-allow-import-name-change \
+    --drive-import-formats=docx,pptx,xlsx,doc,ppt,xls,odp,ods,odt,csv,tsv,txt,xlsm,docm,html \
+    "$@"
+    # --drive-import-formats=csv,docx,epub,html,json,odp,ods,ods,odt,pptx,ppt,doc,xls,rtf,tsv,txt,xlsx,txt,xlsm
+    # --include '*.csv' --include '*.docx' --include '*.epub' \
+    # --include '*.html' --include '*.jpg' --include '*.json' \
+    # --include '*.odp' --include '*.ods' --include '*.ods' \
+    # --include '*.odt' --include '*.pdf' --include '*.pptx' \
+    # --include '*.rtf' --include '*.tsv' --include '*.txt' \
+    # --include '*.xlsx' --include '*.txt' --include '*.xlsm' \
+    # --include '*.ppt' --include '*.doc' --include '*.xls' \

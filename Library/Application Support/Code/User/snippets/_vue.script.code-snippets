@@ -1,0 +1,150 @@
+{
+  "vdefine": {
+    "scope": "vdefine",
+    "prefix": "script",
+    "body": [
+      "import { defineComponent, ref, computed, reactive, watch, watchEffect } from \"vue\"",
+      "import { useHttp } from \"@/helpers/http\"",
+      "import { showToast, showToastError, showToastOk } from \"@/helpers/toast\"",
+      "import { useRoute, useRouter } from \"@/router\"",
+      "import { useAuthStore } from \"@/store/auth\"",
+      "",
+      "export default defineComponent({",
+      "\tname: \"${1:${TM_FILENAME_BASE}}\",",
+      "\tsetup() {",
+      "\t\tconst ${2:ref} = ref(${3:true})",
+      "\t\t${4}",
+      "\t\treturn {${2}}",
+      "\t}",
+      "});"
+    ],
+    "description": "Define a new component"
+  },
+  "vprop": {
+    "prefix": "vprop",
+    "scope": "javascript,typescript",
+    "body": [
+      "\t${1:propName}: {",
+      "\t\ttype: ${2:Number},",
+      "\t\tdefault: ${0}",
+      "\t},"
+    ],
+    "description": "Vue3 - Prop"
+  },
+  "vcomponent": {
+    "scope": "javascript,typescript",
+    "prefix": "vcomponents",
+    "body": ["\tcomponents: {", "\t\t${1:Name}", "\t},"],
+    "description": "Vue3 - components"
+  },
+  "vref": {
+    "scope": "javascript,typescript",
+    "prefix": "vref",
+    "body": ["const ${1:refName} = ref(${2:initialValue})"],
+    "description": "Vue3 - ref"
+  },
+
+  "vreactive": {
+    "prefix": "vreactive",
+    "scope": "javascript,typescript",
+    "body": ["const ${1:reactive} = reactive({", "\t${2:count}: ${3:0}", "})"],
+    "description": "Vue3 - reactive"
+  },
+  "vcomputed": {
+    "scope": "javascript,typescript",
+    "prefix": "vcomputed",
+    "body": ["const ${1:name} = computed(() => {", "\treturn ${2}", "})"],
+    "description": "Vue3 - Computed"
+  },
+  "vwatch": {
+    "scope": "javascript,typescript",
+    "prefix": "vwatch",
+    "body": ["watch(() => ${1:foo}, (newValue, oldValue) => {", "\t${2}", "})"],
+    "description": "Vue3 - Watch"
+  },
+  "vwatchone": {
+    "scope": "javascript,typescript",
+    "prefix": "vwatchOne",
+    "body": [
+      "watch([${1:foo}, ${2:bar}], ([new${1}, new${2}], [prev${1}, prev${2}]) => {",
+      "\t${3}",
+      "})"
+    ],
+    "description": "Vue3 - Prop"
+  },
+  "veffect": {
+    "scope": "javascript,typescript",
+    "prefix": "veffect",
+    "body": ["watchEffect(() => {", "\t${1}", "})"],
+    "description": "Vue3 - watch effect"
+  },
+
+  "vonmounted": {
+    "prefix": "vonMounted",
+    "scope": "javascript,typescript",
+    "body": ["onMounted(() => {${1}})"],
+    "description": "Vue3 - on mounted"
+  },
+  "vonbeforemounted": {
+    "prefix": "vonBeforeMounted",
+    "scope": "javascript,typescript",
+    "body": ["onBeforeMount(() => {${1}})"],
+    "description": "Vue3 - on before mount "
+  },
+  "vonbeforeupdate": {
+    "prefix": "vonBeforeUpdate",
+    "scope": "javascript,typescript",
+    "body": ["onBeforeUpdate(() => {${1}})"],
+    "description": "Vue3 - on  before update"
+  },
+  "vonupdated": {
+    "prefix": "vonUpdated",
+    "scope": "javascript,typescript",
+    "body": ["onUpdated(() => {${1}})"],
+    "description": "Vue3 - on update"
+  },
+  "vonerrorcap": {
+    "prefix": "vonErroCap",
+    "scope": "javascript,typescript",
+    "body": ["onErrorCaptured(() => {${1}})"],
+    "description": "Vue3 - on error captured"
+  },
+  "vonunmounted": {
+    "prefix": "vonUnmounted",
+    "scope": "javascript,typescript",
+    "body": ["onMounted(() => {${1}})"],
+    "description": "Vue3 - on unmonted"
+  },
+  "vonbeforeunmount": {
+    "prefix": "vonBeforeUnmount",
+    "scope": "javascript,typescript",
+    "body": ["onBeforeUnmount(() => {${1}})"],
+    "description": "Vue3 - on before unmount"
+  },
+  "vimp": {
+    "prefix": "vimp",
+    "scope": "javascript,typescript",
+    "body": ["import { ${1:${0}} } from '@/${0:name}.js'"],
+    "description": "Vue3 - Import"
+  },
+  "vimpcomp": {
+    "prefix": "vimpcomp",
+    "scope": "javascript,typescript",
+    "body": [
+      "import { ${0:component} } from '@/composables/${0:component}.js'"
+    ],
+    "description": "Vue3 - Import component"
+  },
+  "vimpcommon": {
+    "prefix": "vimpcommon",
+    "scope": "javascript,typescript",
+    "body": [
+      "import { defineComponent, ref, computed, reactive, watch, watchEffect } from \"vue\"",
+      "import { useHttp } from \"@/helpers/http\"",
+      "import { showToast, showToastError, showToastOk } from \"@/helpers/toast\"",
+      "import { useRoute, useRouter } from \"@/router\"",
+      "import { useAuthStore } from \"@/store/auth\""
+    ],
+    "description": "Vue3 - Import all"
+  }
+}

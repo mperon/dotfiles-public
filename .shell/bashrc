@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+# To the extent possible under law, the author(s) have dedicated all
+# copyright and related and neighboring rights to this software to the
+# public domain worldwide. This software is distributed without any warranty.
+# You should have received a copy of the CC0 Public Domain Dedication along
+# with this software.
+# If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
+
+# If not running interactively, don't do anything
+case $- in
+    *i*) ;;
+      *) return;;
+esac
+
+# Defines shell name
+SH_NAME=bash
+
+# Detects OS
+[[ -z "${OS}" ]] && OS=$(uname -s | cut -d"_" -f1 | tr '[:upper:]' '[:lower:]')
+
+# load default settings
+[[ -f /etc/bashrc ]] && source /etc/bashrc
+
+# BASH CONFIGURATION
+# common bash settings
+shopt -s nocaseglob
+
+# Append to the Bash history file, rather than overwriting it
+# shopt -s histappend
+
+# Autocorrect typos in path names when using `cd`
+shopt -s cdspell
+
+# Do not autocomplete when accidentally pressing Tab on an empty line.
+shopt -s no_empty_cmd_completion
+
+# Check the window size after each command and, if necessary,
+# update the values of LINES and COLUMNS.
+shopt -s checkwinsize
+
+# prevent from escaping $ in tab completion
+# see https://askubuntu.com/questions/70750/how-to-get-bash-to-stop-escaping-during-tab-completion
+[[ ${BASH_VERSINFO[0]} -ge 4 ]] && shopt -s direxpand
+
+# Recursive globbing with "**"
+[[ ${BASH_VERSINFO[0]} -ge 4 ]] && shopt -s globstar
+
+#before that
+cmd_exists() {
+    hash $1 2>/dev/null;
+}
+
+# Run system dependent config files
+for f in exports aliases functions profile; do
+    [[ -f "$HOME/.shell/$f" ]] && source "$HOME/.shell/$f"
+    [[ -f "$HOME/.shell/${OS}/$f" ]] && source "$HOME/.shell/${OS}/$f"
+done
+unset f
+
+
+# bashrc for os dependant
+if [[ -f "$HOME/.shell/${OS}/bashrc" ]]; then
+	source "$HOME/.shell/${OS}/bashrc"
+fi
+
+# private stuff
+[[ -f "$HOME/.shell/private" ]] && source "$HOME/.shell/private"
+
+
+################################
+# PROXY System Config
+################################
+if [[ -x "$HOME/bin/proxyconfig" ]] && [[ -f "$HOME/.proxy" ]]; then
+    $HOME/bin/proxyconfig
+fi
+
+###########################################################
+# Python VirtualEnviroment Auto Setup
+#
+# If FIND_VIRTUALENV is set, try to load virtualenviroment
+############################################################
+if [[ -z "$VIRTUAL_ENV" ]] && [[ "${FIND_VIRTUALENV}" == "1" ]]; then
+    find_virtualenv
+fi #end: find_venv
+
+################################
+# BASH PROMPT
+################################
+declare -a psvar=()
+
+_prompt_rprompt() {
+    printf "%${COLUMNS}s\\r" "$RPROMPT"
+}
+
+_prompt_vcs() {
+    psvar[1]=$(__git_branch ' (\ue725 %s)')
+}
+_prompt_venv() {
+    psvar[2]=$(__venv_name '(\ue73c %s) ')
+}
+_prompt_root() {
+    psvar[3]=$'\uf101'
+    [[ "$EUID" -eq 0 ]] && psvar[3]=$'\uf04e'
+}
+
+# sets prompt commands
+PROMPT_COMMAND="_prompt_venv; _prompt_root; _prompt_rprompt"
+if command -v git > /dev/null 2>&1; then
+    PROMPT_COMMAND="$PROMPT_COMMAND;_prompt_vcs"
+fi
+
+#sets ps1
+PS1="\[\e]2;\u@\h \w\a\]\[\e]1;\u@\h\a\]\[\e[32m\]\u@\h \[\e[33m\]\w\${psvar[1]}${PS1_NL}\[\e[34m\]"$'\n'"\${psvar[3]}\[\e[0m\] "
+RPROMPT=""
+
+# enable programmable completion features (you don't need to enable
+# this, if it's already enabled in /etc/bash.bashrc and /etc/profile
+# sources /etc/bash.bashrc).
+if ! shopt -oq posix; then
+  if [ -f /usr/share/bash-completion/bash_completion ]; then
+    . /usr/share/bash-completion/bash_completion
+  elif [ -f /etc/bash_completion ]; then
+    . /etc/bash_completion
+  fi
+fi

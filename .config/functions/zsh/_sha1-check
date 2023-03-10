@@ -1,0 +1,19 @@
+#compdef sha1-check
+# -*- mode: bash -*-
+integer ret=1
+
+local -a args
+
+_path_or_url() {
+    _alternative \
+        'url:url for key:_urls' \
+        'files:key file:_files -g "*.key"'
+}
+
+args+=(
+    '1::url:_path_or_url'
+)
+
+_arguments -C $args[@] && ret=0
+
+return ret

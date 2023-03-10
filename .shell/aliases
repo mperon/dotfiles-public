@@ -1,0 +1,203 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+# To the extent possible under law, the author(s) have dedicated all
+# copyright and related and neighboring rights to this software to the
+# public domain worldwide. This software is distributed without any warranty.
+# You should have received a copy of the CC0 Public Domain Dedication along
+# with this software.
+# If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
+
+# base-files version 4.3-2
+
+# ~/aliases: executed by bash/zsh(1) for interactive shells.
+
+#shortcuts aliases
+alias desk="cd $T"
+alias desktop="cd $T"
+alias documents="cd $W"
+alias downloads="cd $D"
+alias home="cd $HOME"
+alias music="cd $M"
+alias videos="cd $V"
+
+alias D="cd $D"
+alias F="cd $F"
+alias h="cd $HOME"
+alias H="cd $HOME"
+alias M="cd $M"
+alias T="cd $T"
+alias V="cd $V"
+alias W="cd $W"
+
+if cmd_exists hash; then
+    hash -d desktop=$T
+    hash -d documents=$W
+    hash -d downloads=$D
+    hash -d music=$M
+    hash -d pictures=$F
+    hash -d projects=$P
+    hash -d videos=$V
+fi
+
+#
+# Some shortcuts for different directory listings
+alias l="${ZSH_VERSION:+nocorrect} ls -CF"
+alias sl="${ZSH_VERSION:+nocorrect} ls"
+alias ll="${ZSH_VERSION:+nocorrect} ls -alF"
+alias la="${ZSH_VERSION:+nocorrect} ls -A"
+alias lt="${ZSH_VERSION:+nocorrect} ls -Avlhtr"
+
+# navigation stuff
+alias ..='cd ..'
+alias ...='cd ../..'
+alias cd..='cd ..'
+alias .1='cd ..'
+alias .2='cd ../..'
+alias .3='cd ../../..'
+alias .4='cd ../../../..'
+alias .5='cd ../../../../..'
+
+# prevent wrong typing
+alias ckear='clear'
+alias clr='clear'
+alias gerp='grep'
+
+# Misc
+alias less='less -r'                          # raw control characters
+alias whence='type -a'                        # where, of a sort
+alias wh='which'
+alias \?='which'
+
+# move and mkdir
+alias mv="${ZSH_VERSION:+nocorrect} mv -i"
+alias mkdir="${ZSH_VERSION:+nocorrect} mkdir"
+
+# space utils
+alias df='df -h'
+alias du='du -h'
+alias du1='du -d 1' #estimate space usage at maximun depth
+
+# Exit Command
+alias :q='exit'
+alias bye='exit'
+alias die='exit'
+
+# create temporary directory
+alias cd-temp='cd $(mktemp -d)'
+
+# vim/vi aliases
+alias gv='gvim'
+alias v='vim'
+alias vi='vim'
+
+# editor
+alias e='$HOME/bin/editor'
+alias edit='$HOME/bin/editor'
+
+# better view of mount
+alias mount-tabbed='mount | column -t'
+
+# Find a command in your grep history
+alias history-find='history | grep'
+
+# make executable
+alias ax='chmod a+x'
+
+# copy files and ignore errors
+#alias fastcopy='rsync -avAXEWSlHh --no-compress --modify-window=1 --ignore-errors --inplace  --partial --info=progress2'
+#moved to functions
+
+#internet
+cmd_exists "wget" && alias wget='wget --hsts-file="$XDG_CACHE_HOME/wget-hsts"'
+
+# command to fit all lines in
+# do like ps aux | fit
+alias fit="less -+S"
+
+#clipboard
+alias clip='clipboard'
+
+#gpg stuff
+if cmd_exists gpg2; then
+    alias gpg='gpg2'
+    alias gpg-new='gpg2 --full-generate-key'
+    alias gpg-list='gpg2 --list-secret-keys --keyid-format LONG'
+else
+    alias gpg-new='gpg --full-generate-key'
+    alias gpg-list='gpg --list-secret-keys --keyid-format LONG'
+fi
+
+# Programming
+###################################
+alias diff='git diff --no-index --color-words'
+
+#python stuff
+alias pym='python3 manage.py'
+alias py3m='python3 manage.py'
+alias ppip='python3 -m pip'
+alias ppip3='python3 -m pip'
+alias lenv='activate_venv'
+alias denv='deactivate'
+
+# upgrade outdated packages
+alias pip_update='echo "not implemented!"'
+
+# Open clipboard content on vim
+alias vcb='cliboard | vim -'
+
+#java
+alias jj='$JAVA_HOME/bin/java'
+alias jjc='$JAVA_HOME/bin/javac'
+
+# environment stuff
+alias genv='env | grep'
+
+# copy my publickey to clipboard
+alias keygen-rsa='keygen-generator rsa'
+alias keygen-ed='keygen-generator ed25519'
+
+# URL-encode strings
+alias urlencode='python3 -c "import sys, urllib.parse as ulp; print(\" \".join([ulp.quote(s) for s in sys.argv[1:]]))"'
+
+#alias for general use
+#rerun last command as sudo
+alias please='sudo $(fc -ln -1)'
+
+# Print each PATH entry on a separate line
+alias path='echo -e ${PATH//:/\\n}'
+
+# dotfiles using bare repos
+alias dotf='git --git-dir=$HOME/.config/dotfiles/ --work-tree=$HOME'
+
+alias p='projects'
+alias proj='projects'
+
+# Cloud
+###################################
+# rclone only searchable files
+alias rcloud="rclone --fast-list --drive-skip-shortcuts --buffer-size=32M --drive-chunk-size=32M --timeout=32m --contimeout=32m --retries-sleep=16s"
+alias rdrive="rcloud --retries 1 --drive-allow-import-name-change --drive-import-formats=csv,doc,docx,epub,html,json,odp,ods,odt,ppt,pptx,rtf,tsv,txt,xls,xlsm,xlsx --include '*.csv' --include '*.docx' --include '*.epub' --include '*.html' --include '*.json' --include '*.odp' --include '*.ods' --include '*.ods' --include '*.odt' --include '*.pdf' --include '*.pptx' --include '*.rtf' --include '*.tsv' --include '*.txt' --include '*.xlsx' --include '*.txt' --include '*.xlsm' --include '*.ppt' --include '*.doc' --include '*.xls'"
+alias rcloud-dedupe="rcloud dedupe --dedupe-mode newest"
+
+# Network
+###################################
+alias iplookup='netw-ip'
+alias dnslookup='doggo'
+alias mxlookup='doggo --type=MX'
+alias domainlookup='netw-whois'
+alias netw-ping='ping -c 100 -s 2'
+alias netw-dns='doggo'
+alias netw-mx='doggo --type=MX'
+alias netw-wanip="dig +short myip.opendns.com @resolver1.opendns.com"
+# list all open ports
+alias netw-opened='sudo lsof -n -i -s TCP:LISTEN,ESTABLISHED'
+
+# Media
+###################################
+# youtube download
+alias yd-clip='youtube-dl --ignore-config --no-check-certificate --metadata-from-title "%(artist)s - %(title)s" --add-metadata -o "%(autonumber)s %(title)s.%(ext)s" --yes-playlist --skip-unavailable-fragments --ignore-errors --no-overwrites --continue'
+alias yd-play='youtube-dl --ignore-config --no-check-certificate --metadata-from-title "%(artist)s - %(title)s" --add-metadata -o "%(playlist_index)05d %(title)s.%(ext)s" --yes-playlist --skip-unavailable-fragments --ignore-errors --no-overwrites --continue'
+alias yd-play-720p='yd-play -f "bestvideo[height<=720]+bestaudio/best[height<=720]" '
+alias yd-play-480p='yd-play -f "bestvideo[height<=480]+bestaudio/best[height<=480]" '
+alias yd-play-1080p='yd-play -f "bestvideo[height<=1080]+bestaudio/best[height<=1080]" '
+

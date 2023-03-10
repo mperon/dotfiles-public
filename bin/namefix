@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+# Default variables
+source "${BASH_SOURCE%/*}/lib/venv.sh"
+
+# venv variables
+P_VENV_NAME="home_namefix"
+P_VERSION="python3"
+P_VENV_PKGS=""
+P_VENV_PATH="$HOME/bin"
+
+ensure_venv || return 4
+python3 -m pyperon.namefix "$@"

@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+
+
+find_virtualenv() {
+    local _pwd="${1:-${PWD}}"
+    local _vsai= _vsn= _vnn=
+    local _vsa=("/Scripts/activate" "/bin/activate")
+    for _vsn in '' '/.venv' '/venv' '/.virtualenv' '/virtualenv'; do
+        for _vsai in "${_vsa[@]}"; do
+            _vnn="${_pwd/%\//}${_vsn/%\//}${_vsai}"
+            if [[ -f "${_vnn}" ]]; then
+                echo "${_pwd/%\//}${_vsn/%\//}"
+                return 0
+            fi
+        done
+    done
+    return 2
+}
+
+main() {
+    venv=$(find_virtualenv)
+    if [[ $? -eq 0 ]]; then
+        #ja tem venv, atualiza
+        echo "Python Virtual Environment FOUND!"
+        echo "Loading..."
+        source "$venv/bin/activate"
+        echo "Done!"
+    else
+        #nao tem, cria
+        echo "NO Python Virtual Environment was found!"
+        venv="$PWD/venv"
+        echo "Creating ..."
+        python3 -m venv "$PWD/venv"
+        source "$venv/bin/activate"
+        echo "Done!"
+    fi
+    #now install base software and updates
+    echo "Updating environment.."
+    $venv/bin/python3 -m pip install --upgrade pip build
+    shopt -s nullglob
+    for f in $PWD/requirements*.txt; do
+        $venv/bin/python3 -m pip install -r $f
+    done
+}
+
+
+main "$@"
+exit $?

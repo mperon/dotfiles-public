@@ -1,0 +1,325 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+# import functions
+source "${BASH_SOURCE%/*}/lib/bashFn.sh"
+source "${BASH_SOURCE%/*}/lib/pgetopt.sh"
+
+a_action= a_from= a_to= a_files= a_list=
+#default variables
+TOTAL_F=0
+COUNT=0
+a_date=$(date +%Y-%m-%d)
+
+# Build a regextype with search extensions
+__buildFindNames() {
+    local names=""
+    for n in "$@"; do
+        if [[ "$names" != "" ]]; then
+            names="$names|"
+        fi
+        names="$names$n"
+    done
+    echo "$names"
+}
+
+# __search FOLDER FORMATS COMMAND
+#			 $1     $2       $3
+__search() {
+	local SEARCH_DIR=$(realpath "$1")
+
+	local TMP1=$(mktemp)
+	local TMP2=$(mktemp)
+	local formats=$(__buildFindNames $2)
+    find "$SEARCH_DIR" -regextype "posix-extended" -iregex "^.*\.($formats)\$" > $TMP1
+    cat ${TMP1} | sort > ${TMP2}
+    read TOTAL_F n <<< $(wc -l ${TMP2})
+	echo "Total Files: $TOTAL_F"
+    COUNT=0
+    while IFS= read -r line ;do
+        ((COUNT++))
+        ProgressBar $COUNT $TOTAL_F "| $COUNT of $TOTAL_F    "
+		$3 "$line"
+	done < $TMP1
+	rm -f $TMP1
+	rm -f $TMP2
+}
+
+# Compress a source code folder
+# __compress FOLDER
+#			   $1
+__compress() {
+    local folder="$1"
+    local fname=$(basename $folder)
+    if [[ -d "$folder" ]]; then
+        if [[ -d "$dir/.git" ]] || [[ -d "$folder/.git" ]]; then
+            local curpwd=$PWD
+            cd "$folder"
+            git archive --format=tar.gz -o "$dest/$fname.tar.gz" -v HEAD  > /dev/null
+            cd "$curpwd"
+        else
+            tar czf "$dest/$fname.tar.gz" --exclude .git --exclude "*.log" "$folder/*" > /dev/null
+        fi
+    fi
+}
+
+# Compress a source code folder
+# __compress FOLDER  DESTINATION RECURSIVE
+#			   $1        $2         $3
+__compressFolder() {
+    local dir=$1
+    if [[ -z "${dir// }" ]] || [[ ! -d "$dir" ]]; then
+        dir="$PWD"
+    fi
+    dir=$(realpath "$dir")
+
+    #destination dir ($2)
+    local dest="$2"
+    if [[ ! -z "${dest// }" ]] && [[ -d "$dest" ]]; then
+        dest="$2"
+    else
+        dest="$PWD"
+    fi
+    if [[ "$3" == "-r" ]]; then
+        for folder in $dir/*; do
+            __compress "$folder"
+        done
+    else
+        __compress "$dir"
+    fi
+}
+
+__encrypt() {
+#	filename=$(basename "$1")
+#	directory=$(dirname "$1")
+    if [[ "$1" != *.gpg ]]; then
+#        __print "Encripting $filename .. "
+        FILE="$1.gpg"
+        echo "${REPOS_PASS}" | gpg --batch --no-tty --yes --passphrase-fd 0 --symmetric -o "$FILE" "$1"
+        if [ $? -eq 0 ]; then
+            if [[ -f "$FILE" ]]; then
+                rm -f "$1"
+            fi
+        fi
+    fi
+}
+
+__decrypt() {
+#	filename=$(basename "$1")
+#	directory=$(dirname "$1")
+    if [[ "$1" == *.gpg ]]; then
+#        __print "Encripting $filename .. "
+        FILE="${1%.*}"
+        echo "${REPOS_PASS}" | gpg --batch --no-tty --yes --passphrase-fd 0 --symmetric -o "$FILE" "$1"
+        if [ $? -eq 0 ]; then
+            if [[ -f "$FILE" ]]; then
+                rm -f "$1"
+            fi
+        fi
+    fi
+}
+
+# ACTION compress
+__global_compress() {
+    local c_dir="$1"
+    local t_dir="$2"
+    local c_fname=".compress"
+    local c_recursef=".recursive"
+
+    local c_path= c_dest= c_r=
+
+    for d in $c_dir/*; do
+        if [[ -d "$d" ]]; then
+            local d_name=$(basename "$d")
+            if [[ -f "$d/${c_fname}" ]]; then
+                while IFS=':' read -r c_path c_dest c_r; do
+                    local c_recursive=""
+                    [[ -n "${c_path// }" ]] && [[ "${c_path:0:1}" != "/" ]] && c_path="/${c_path}"
+                    [[ -n "${c_dest// }" ]] && [[ "${c_dest:0:1}" != "/" ]] && c_dest="/${c_dest}"
+                    [[ -n "${c_r// }" ]] && c_recursive="-r"
+                    local cf_dest="$a_to/${d_name}${c_dest}"
+                    [[ ! -d "${cf_dest}" ]] && mkdir -p "${cf_dest}"
+                    __compressFolder "$c_dir/${d_name}${c_path}" "${cf_dest}" "$c_recursive"
+                done < "$d/${c_fname}"
+                #copy conf file to dest
+                cp "$d/${c_fname}" "$a_to/${d_name}"
+            else
+                c_recursive=""
+                c_dest="$a_to/${d_name}"
+                [[ ! -d "${c_dest}" ]] && mkdir -p "${c_dest}"
+                [[ -f "$d/${c_recursef}" ]] && c_recursive="-r" && cp "$d/${c_recursef}" "${c_dest}"
+                __compressFolder "$d" "${c_dest}" "${c_recursive}"
+            fi
+        fi
+    done
+}
+
+# ACTION encrypt
+__global_encrypt() {
+    local DR="$1"
+    __print "Inform a password to encript files:"
+    read -s -p "Password: " password
+    REPOS_PASS="$password"
+    __search "$DR" "tar.gz" "__encrypt"
+    unset REPOS_PASS
+}
+
+# ACTION decrypt
+__global_decrypt() {
+    local DR="$1"
+    __print "Inform a password to decrypt files:"
+    read -s -p "Password: " password
+    REPOS_PASS="$password"
+    __search "$DR" "tar.gz.enc" "__decrypt"
+    unset REPOS_PASS
+}
+
+__action_print() {
+    __print "Directory: $1"
+    __print "Git Repo: $2"
+    __print ""
+}
+
+##
+#ACTION clone
+##
+__action_clone() {
+    local c_dir=$1
+    local c_git=$2
+    local old_pwd=$PWD
+    __print "Creating repo $c_dir on $a_from ..."
+    mkdir -p "$a_from/$c_dir"
+    cd "$a_from"
+    __print "Cloning repo from $c_git .."
+    git clone "$c_git" "$c_dir"
+    __print "Done!"
+    cd "$old_pwd"
+}
+
+# after ACTION clone
+__action_clone_after() {
+    local fname=$(basename "$1")
+    [[ ! -f "$a_to/$fname" ]] && cp "$1" "$a_to/$fname"
+}
+
+##
+#  HERE GOES MAIN FUNCTION AND OTHER FUNCIONS TO PARSE ARGUMENTS
+##
+__listActions() {
+    echo " Repository Actions Avaliable:"
+    echo " -----------------------------"
+    echo " print     Prints the repos list"
+    echo " clone     Clones the repos to directories"
+    echo " compress  Compress the exported repos"
+    echo " encrypt   Encripts the data"
+    echo " decrypt   Decrypts a encoded data"
+}
+
+
+__main() {
+    local result=1
+    #its a file action, not a global one
+    local a_prefix="__action_"
+    for f in "${a_files[@]}"; do
+        if [[ ! -f "$f" ]] || [[ ! -r "$f" ]]; then
+            __print "File $f doesnt exists or cannot be read!"
+            result=1
+            continue
+        fi
+        #each file action
+        function_exists "${a_prefix}${a_action}_before" && "${a_prefix}${a_action}_before" "$f"
+        while IFS='' read -r line || [[ -n "$line" ]]; do
+            local path=$(echo "$line" | cut -d: -f 1)
+            local git=$(echo "$line" | cut -d: -f 2-)
+            function_exists "${a_prefix}${a_action}" && "${a_prefix}${a_action}" "$path" "$git" "$line"
+            result=0
+        done < "$f"
+        function_exists "${a_prefix}${a_action}_after" && "${a_prefix}${a_action}_after" "$f"
+    done
+    #execut global action
+    local a_prefix="__global_"
+    function_exists "${a_prefix}${a_action}_before" && "${a_prefix}${a_action}_before" "$a_from" "$a_to"
+        echo "Calling ${a_prefix}${a_action}" "$a_from" "$a_to"
+        function_exists "${a_prefix}${a_action}" && result=0 && "${a_prefix}${a_action}" "$a_from" "$a_to"
+    function_exists "${a_prefix}${a_action}_after" && "${a_prefix}${a_action}_after" "$a_from" "$a_to"
+    return $result
+}
+
+
+### Parsing data
+__parse() {
+    local OPTIONS=a:f:t:lhv
+    local LONGOPTIONS=action:,from:,to:,list,help,debug
+
+    local argv=$(pgetopt -o $OPTIONS -l $LONGOPTIONS -n "$0" -- "$@")
+    [[ $? -ne 0 ]] && exit 2
+    eval set -- "$argv"
+    # Debug arguments
+    __debug "" "Parsed Getopts: $*"
+    # now enjoy the options in order and nicely split until we see --
+    while true; do
+        case "$1" in
+            -a|--action)
+                a_action="$2"; shift 2;;
+            -f|--from)
+                a_from="$2"; shift 2;;
+            -t|--to)
+                a_to="$2"; shift 2;;
+            -l|--list)
+                a_list=true; shift;;
+            -v|--debug)
+                _DEBUG=y; shift;;
+            --)
+                shift; a_files=( "$@" ); break;;
+            h  ) __usage;;
+            \? ) __print "Unknown option: -$OPTARG" >&2; __usage;;
+            :  ) __print "Missing option argument for -$OPTARG" >&2; __usage;;
+            *  ) __print "Unimplemented option: -$OPTARG" >&2; __usage;;
+        esac
+    done
+    # validate input parameters
+    if [[ -n "${a_list// }" ]]; then
+        __listActions
+        exit 0
+    fi
+    if [[ -z "${a_action// }" ]]; then
+        __print "You must provide a action -a [action]"
+        __usage
+    fi
+    if [[ -z "${a_from// }" ]]; then
+        a_from="$PWD"
+    fi
+
+    if [[ -z "${a_to// }" ]]; then
+        a_to="/tmp/${a_date}"
+    fi
+}
+
+__usage() {
+    cat <<HELP_USAGE
+    $0
+        [-a] [-f] [-l] [-t] file1 [file2] ...
+
+    -a|--action     action to perform on repos
+    -l|--list       list actions avaliable
+    -f|--from       where repos is located, default is ./
+    -t|--to         to where action be located
+    file1           File with repos instructions
+HELP_USAGE
+    exit 4
+}
+
+if [[ -n "$_DEBUG" ]]; then __print "Parsing command line arguments.."; fi
+
+__parse "$@"
+
+__debug "Command Line Arguments: "
+__debug "   a_action: $a_action"
+__debug "     a_from: $a_from"
+__debug "       a_to: $a_to"
+__debug "    a_files: ${a_files[@]}"
+__debug ""
+__debug "Running main code: "
+
+__main
+exit $?

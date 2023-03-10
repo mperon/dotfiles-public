@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+# import functions
+source "${BASH_SOURCE%/*}/lib/bashFn.sh"
+
+__run_editor() {
+    if command_exists "pinta"; then
+        pinta "$1"
+    elif command_exists "gthumb"; then
+        gthumb "$1"
+    else
+        [[ -f "$1" ]] && xclip -selection clipboard -t image/png -i $tmpf \
+            && rm -f $tmpf \
+            && notify-send "Error!" "Cannot find image editor! Copied to clipboard!"
+    fi
+}
+
+_gnome() {
+    if [[ "$1" == "--clipboard" ]]; then
+        tmpf=$(mktemp)
+        tmpf=${tmpf}.png
+        /usr/bin/gnome-screenshot -a -f $tmpf
+        [[ -f "$tmpf" ]] && xclip -selection clipboard -t image/png -i $tmpf \
+            && rm -f $tmpf \
+            && notify-send "Success!" "Screenshot copied to clipboard!" || notify-send "Failed!" "Cannot send screenshot to clipboard!"
+    elif [[ "$1" == "--window" ]]; then
+        /usr/bin/gnome-screenshot -w \
+            && notify-send "Success!" "Screenshot of active window saved in Pictures!" || notify-send "Failed!" "Cannot create screenshot from active window!"
+    elif [[ "$1" == "--area" ]]; then
+        /usr/bin/gnome-screenshot -a \
+            && notify-send "Success!" "Screenshot of area saved in Pictures!" || notify-send "Failed!" "Cannot create screenshot from area!"
+    elif [[ "$1" == "--area-to-editor" ]]; then
+        tmpf=$(mktemp)
+        tmpf=${tmpf}.jpg
+        /usr/bin/gnome-screenshot -a -f $tmpf && __run_editor "$tmpf"
+    fi
+}
+
+_shutter() {
+    if [[ "$1" == "--clipboard" ]]; then
+        tmpf=$(mktemp)
+        tmpf=${tmpf}.png
+        /usr/bin/gnome-screenshot -a -f $tmpf
+        [[ -f "$tmpf" ]] && xclip -selection clipboard -t image/png -i $tmpf \
+            && rm -f $tmpf \
+            && notify-send "Success!" "Screenshot copied to clipboard!" || notify-send "Failed!" "Cannot send screenshot to clipboard!"
+    elif [[ "$1" == "--window" ]]; then
+        /usr/bin/gnome-screenshot -w \
+            && notify-send "Success!" "Screenshot of active window saved in Pictures!" || notify-send "Failed!" "Cannot create screenshot from active window!"
+    elif [[ "$1" == "--area" ]]; then
+        /usr/bin/gnome-screenshot -a \
+            && notify-send "Success!" "Screenshot of area saved in Pictures!" || notify-send "Failed!" "Cannot create screenshot from area!"
+    elif [[ "$1" == "--area-to-editor" ]]; then
+        /usr/bin/shutter --disable_systray --selection
+    fi
+}
+
+_gnome "$@"

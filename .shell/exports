@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+#vim: ts=4 sw=4 et ft=sh
+
+# Define Operation System
+[[ -z "${OS}" ]] && OS=$(uname -s | cut -d"_" -f1 | tr '[:upper:]' '[:lower:]')
+
+# Define Locales
+# Prefer US English and use UTF-8.
+export LANG='en_US.UTF-8'
+export LC_ALL='en_US.UTF-8'
+
+###############################
+# EXPORT ENVIRONMENT VARIABLE #
+###############################
+
+#default directory enviroment
+export D="$HOME/Downloads"
+export F="$HOME/Pictures"
+export H="$HOME"
+export M="$HOME/Music"
+export P="$HOME/Projetos"
+export T="$HOME/Desktop"
+export V="$HOME/Videos"
+export W="$HOME/Documents"
+
+# XDG
+export XDG_CONFIG_HOME=$HOME/.config
+export XDG_DATA_HOME=$HOME/.local/share
+export XDG_CACHE_HOME=$HOME/.cache
+
+# ensure that these directories exists
+mkdir -p $XDG_CONFIG_HOME $XDG_DATA_HOME $XDG_CACHE_HOME
+
+# Increase Bash history size. Allow 32³ entries; the default is 500.
+export HISTFILE=$XDG_CACHE_HOME/${SH_NAME}_history
+export HISTSIZE=100000000
+export HISTFILESIZE=100000000
+export SAVEHIST=10000
+
+# less history location
+export LESSHISTFILE=$XDG_CACHE_HOME/less_history
+
+# Omit duplicates and commands that begin with a space from history.
+export HISTCONTROL='ignoreboth:erasedups'
+
+# Avoid issues with `gpg` as installed via Homebrew.
+# https://stackoverflow.com/a/42265848/96656
+export GPG_TTY=$(tty)
+
+# define new zsh directory
+export ZDOTDIR="$XDG_CONFIG_HOME/zsh"
+
+# other software
+export VIMCONFIG="$XDG_CONFIG_HOME/nvim"
+
+# sets default editor
+export EDITOR="nvim"
+export VISUAL="nvim"
+
+# allow colored cli
+export CLICOLOR=1
+
+# Don’t clear the screen after quitting a manual page.
+export MANPAGER='less --quit-if-one-screen --ignore-case --status-column --LONG-PROMPT --RAW-CONTROL-CHARS --HILITE-UNREAD --tabs=4 --no-init --window=-4'
+#export MANPAGER='nvim +Man!'
+
+#--------------------
+# Path related stuff
+#--------------------
+# add bin home into path
+if [[ -d "$HOME/bin" ]]; then
+    [[ ! ":${PATH}:" =~ ":${HOME}/bin:" ]] \
+        && export PATH="${HOME}/bin:$PATH"
+fi
+
+# add bin home system depedent to path
+if [[ -d "$HOME/bin/${OS}" ]]; then
+    [[ ! ":${PATH}:" =~ ":${HOME}/bin/${OS}:" ]] \
+        && export PATH="${HOME}/bin/${OS}:$PATH"
+fi
+
+# add npm to path if exists
+if [[ -d "$HOME/.local/npm/bin" ]]; then
+    [[ ! ":${PATH}:" =~ ":${HOME}/.local/npm/bin:" ]] \
+        && export PATH="$PATH:${HOME}/.local/npm/bin"
+fi
+
+#--------------------
+# programming stuff
+#--------------------
+# Enable persistent REPL history for `node`.
+export NODE_REPL_HISTORY=${XDG_CACHE_HOME}/node_history
+
+# Set Yarn cache folder
+export YARN_CACHE_FOLDER=${XDG_CACHE_HOME}/yarn
+[[ ! -d $YARN_CACHE_FOLDER ]] && mkdir -p $YARN_CACHE_FOLDER
+
+# Allow 32³ entries; the default is 1000.
+export NODE_REPL_HISTORY_SIZE='32768'
+
+# Use sloppy mode by default, matching web browsers.
+export NODE_REPL_MODE='sloppy'
+
+#NPM
+export NPM_CONFIG_PREFIX=${XDG_CONFIG_HOME}/npm
+export NPM_CONFIG_CACHE=${XDG_CACHE_HOME}/npm-cache
+export NPM_PATH="$XDG_CONFIG_HOME/node_modules"
+export NPM_BIN="$XDG_CONFIG_HOME/node_modules/bin"
+export NPM_CONFIG_PREFIX="$XDG_CONFIG_HOME/node_modules"
+
+
+# Make Python use UTF-8 encoding for output to stdin, stdout, and stderr.
+export PYTHONIOENCODING='UTF-8'
+
+# java settings
+if [[ -x /usr/libexec/java_home ]]; then
+    if /usr/libexec/java_home &>/dev/null; then
+        export JAVA_HOME=$(/usr/libexec/java_home | head -n 1)
+        export CLASSPATH="$JAVA_HOME:."
+        export JAVA_CLASSPATH="$CLASSPATH"
+    fi
+fi
+
+# from xdg-ninja
+export GNUPGHOME="$XDG_DATA_HOME/gnupg"
+export XAUTHORITY="$XDG_DATA_HOME/Xauthority"
+export WINEPREFIX="$XDG_DATA_HOME/wine"
+export GTK2_RC_FILES="$XDG_CONFIG_HOME/gtk-2.0/gtkrc"
+
+# INCLUDE PATHS FOR COMPILLING STUFF
+[[ -d "/opt/local/bin" ]] && [[ ! ":${PATH}:" =~ ":/opt/local/bin:" ]] \
+        && export PATH="$PATH:/opt/local/bin"
+
+# golang
+if cmd_exists go; then
+    export GOPATH=/opt/golang
+    export GOROOT="$HOMEBREW_PREFIX/opt/go/libexec"
+    [[ -d "${GOPATH}/bin" ]] && [[ ! ":${PATH}:" =~ ":${GOPATH}/bin:" ]] \
+        && export PATH="$PATH:${GOPATH}/bin"
+    [[ -d "${GOROOT}/bin" ]] && [[ ! ":${PATH}:" =~ ":${GOROOT}/bin:" ]] \
+        && export PATH="$PATH:${GOROOT}/bin"
+fi
+
+# node folder
+export NVM_DIR="$XDG_DATA_HOME/nvm"
+
+# for compiling library clang
+for d in "$HOMEBREW_PREFIX" "$JAVA_HOME" "/opt/local" "/usr/local"; do
+    if [[ -d "$d/lib" ]] && [[ -d "$d/include" ]]; then
+        export LD_LIBRARY_PATH=${LD_LIBRARY_PATH+$LD_LIBRARY_PATH:}${d}/lib
+        export C_INCLUDE_PATH=${C_INCLUDE_PATH+$C_INCLUDE_PATH:}${d}/include
+        export CPLUS_INCLUDE_PATH="${CPLUS_INCLUDE_PATH+$CPLUS_INCLUDE_PATH:}:${d}/include"
+        export CPPFLAGS="${CPPFLAGS+$CPPFLAGS }-I${d}/include"
+        export LDFLAGS="$LDFLAGS -L${d}/lib"
+        export CFLAGS="$CFLAGS -I${d}/include"
+    fi
+done

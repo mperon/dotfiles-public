@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+# Default variables
+source "${BASH_SOURCE%/*}/lib/venv.sh"
+
+# venv variables
+P_VENV_NAME="home_repsync"
+P_VERSION="python3"
+P_VENV_PKGS="requests click"
+P_VENV_PATH="$HOME/bin"
+P_VENV_UPGRADE=1
+
+_main() {
+    force_venv || return 4
+    python3 -m pyperon.repsync "$@"
+}
+
+_main "$@"

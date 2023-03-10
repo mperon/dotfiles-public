@@ -1,0 +1,23 @@
+#!/usr/bin/env zsh
+# vim: ts=4 sw=4 et ft=sh
+# To the extent possible under law, the author(s) have dedicated all
+# copyright and related and neighboring rights to this software to the
+# public domain worldwide. This software is distributed without any warranty.
+# You should have received a copy of the CC0 Public Domain Dedication along
+# with this software.
+# If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
+
+# base-files version 4.3-2
+if [[ -n "$WSL_DISTRO_NAME" ]]; then
+	source /tmp/ssh-agent >/dev/null 2>&1
+	ssh-add 2> /dev/null
+	if [ $? -ne 0 ]; then
+	  ssh-agent >/tmp/ssh-agent
+	  source /tmp/ssh-agent >/dev/null 2>&1
+	  ssh-add > /dev/null
+	fi
+fi
+# add keys to vault
+if ! ssh-add -l &>/dev/null; then
+    ssh-add .ssh/id_*[^.pub] &> /dev/null
+fi
