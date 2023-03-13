@@ -91,6 +91,7 @@ inst_homebrew() { #core
     brew tap homebrew/bundle
     brew update && brew upgrade
     brew install cask
+    brew install mas
     git -C $(brew --repo) checkout master
 }
 
@@ -205,6 +206,9 @@ inst_essential() { #core
     # upgrade bash and zsh
     inst_zsh
     inst_bash
+
+    # mas
+    brew install mas
 
     # install gnu core utilities
     brew install coreutils
