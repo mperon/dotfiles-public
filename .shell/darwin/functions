@@ -36,6 +36,7 @@ update-darwin() {
         mas outdated
         echo "Updating:"
         mas upgrade
+    fi
 }
 
 # reinstall application
